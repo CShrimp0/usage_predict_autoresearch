@@ -16,12 +16,14 @@ from evaluation.plots import (
     save_bland_altman,
     save_feature_importance_top20,
     save_predicted_vs_true,
+    save_ranked_bar_plot,
     save_residual_hist,
     save_residual_vs_age,
 )
 from evaluation.reporting import build_run_summary, save_core_outputs, save_run_summary
 from evaluation.subgroup_analysis import analyze_age_bins, analyze_subgroups
 from explain.importance import compute_importance, extract_selected_feature_names
+from explain.shap_utils import compute_shap_importance, save_shap_topk
 from preprocessing.column_builder import build_column_spec
 from preprocessing.split import assign_holdout_split
 from _common import base_argument_parser, initialize_run, load_runtime_config
@@ -57,6 +59,7 @@ def main() -> None:
     logger.info("Starting experiment '%s'.", config.get("experiment", {}).get("name", "experiment"))
 
     feature_df = _load_or_extract_features(config, logger, run_dir)
+    raw_feature_columns = sorted([column for column in feature_df.columns if "__" in column])
     column_spec = build_column_spec(feature_df, config)
     split = assign_holdout_split(feature_df, config)
     feature_df = feature_df.copy()
@@ -120,6 +123,12 @@ def main() -> None:
         config=config,
     )
     selected_features = extract_selected_feature_names(final_pipeline, column_spec.model_input_columns)
+    shap_frame = pd.DataFrame()
+    if config.get("explain", {}).get("shap", {}).get("enabled", False):
+        from utils.feature_names import transform_features
+
+        transformed = transform_features(final_pipeline, test_df[column_spec.model_input_columns])
+        shap_frame = compute_shap_importance(final_pipeline.named_steps["model"], transformed, selected_features)
     age_bin_metrics = analyze_age_bins(
         test_frame,
         bin_edges=config.get("evaluation", {}).get("age_bin_edges"),
@@ -155,16 +164,38 @@ def main() -> None:
         feature_importance[feature_importance["importance_type"].isin(["permutation", "impurity", "coefficient_abs"])].drop_duplicates("feature"),
         figures_dir / "feature_importance_top20.png",
     )
+    shap_top = pd.DataFrame()
+    if not shap_frame.empty:
+        shap_dir = run_dir / "shap"
+        shap_dir.mkdir(exist_ok=True)
+        top_k = int(config.get("explain", {}).get("shap", {}).get("top_k", 20))
+        shap_frame.to_csv(shap_dir / "shap_importance_all.csv", index=False)
+        shap_top = save_shap_topk(shap_frame, shap_dir, top_k=top_k)
+        save_ranked_bar_plot(
+            shap_top,
+            shap_dir / f"shap_top{top_k}.png",
+            title=f"Top {top_k} SHAP Importance",
+            top_k=len(shap_top),
+        )
 
     models_dir = run_dir / "models"
     models_dir.mkdir(exist_ok=True)
     joblib.dump(final_pipeline, models_dir / "model.joblib")
     summary = build_run_summary(
-        metrics=test_metrics,
+        run_dir=run_dir,
+        config=config,
+        mode="holdout",
+        primary_metrics=test_metrics,
         split_info=split_info,
-        top_features=feature_importance.sort_values("importance", ascending=False),
         diagnostics=diagnostics,
-        model_name=config["model"]["name"],
+        predictions=test_frame,
+        raw_feature_columns=raw_feature_columns,
+        selected_features=selected_features,
+        feature_importance=feature_importance.sort_values("importance", ascending=False),
+        age_bin_metrics=age_bin_metrics,
+        subgroup_metrics=subgroup_metrics,
+        validation_metrics=val_metrics,
+        shap_top=shap_top,
     )
     save_run_summary(summary, run_dir / "run_summary.md")
     logger.info("Experiment finished. Outputs written to %s", run_dir)

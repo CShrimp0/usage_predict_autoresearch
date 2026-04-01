@@ -104,3 +104,25 @@ def save_feature_importance_top20(frame: pd.DataFrame, path: str | Path) -> None
     fig.tight_layout()
     fig.savefig(path, dpi=200)
     plt.close(fig)
+
+
+def save_ranked_bar_plot(
+    frame: pd.DataFrame,
+    path: str | Path,
+    title: str,
+    value_column: str = "importance",
+    label_column: str = "feature",
+    top_k: int = 20,
+) -> None:
+    """Save a ranked horizontal bar plot."""
+    if frame.empty:
+        return
+    top = frame.sort_values(value_column, ascending=False).head(top_k).iloc[::-1]
+    fig_height = max(5, min(12, 0.35 * len(top) + 1.5))
+    fig, ax = plt.subplots(figsize=(8, fig_height))
+    ax.barh(top[label_column], top[value_column], color="tab:purple")
+    ax.set_xlabel(value_column.replace("_", " ").title())
+    ax.set_title(title)
+    fig.tight_layout()
+    fig.savefig(path, dpi=200)
+    plt.close(fig)

@@ -15,13 +15,14 @@ from evaluation.plots import (
     save_bland_altman,
     save_feature_importance_top20,
     save_predicted_vs_true,
+    save_ranked_bar_plot,
     save_residual_hist,
     save_residual_vs_age,
 )
 from evaluation.reporting import build_run_summary, save_core_outputs, save_run_summary
 from evaluation.subgroup_analysis import analyze_age_bins, analyze_subgroups
 from explain.importance import compute_importance, extract_selected_feature_names
-from explain.shap_utils import compute_shap_importance
+from explain.shap_utils import compute_shap_importance, save_shap_topk
 from preprocessing.column_builder import build_column_spec
 from preprocessing.split import iter_outer_cv
 from _common import base_argument_parser, initialize_run, load_runtime_config
@@ -54,12 +55,14 @@ def main() -> None:
     run_dir, logger = initialize_run(config)
 
     feature_df = _load_or_extract_features(config, logger, run_dir)
+    raw_feature_columns = sorted([column for column in feature_df.columns if "__" in column])
     column_spec = build_column_spec(feature_df, config)
 
     predictions_by_fold = []
     fold_metrics_rows = []
     selected_feature_lists = []
     importance_frames = []
+    shap_frames = []
     best_params_by_fold = {}
     last_pipeline = None
 
@@ -112,7 +115,7 @@ def main() -> None:
             shap_frame = compute_shap_importance(pipeline.named_steps["model"], transformed, selected_features)
             if not shap_frame.empty:
                 shap_frame["fold"] = fold_idx
-                importance_frames.append(shap_frame)
+                shap_frames.append(shap_frame)
 
         models_dir = run_dir / "models"
         models_dir.mkdir(exist_ok=True)
@@ -138,6 +141,9 @@ def main() -> None:
         feature_importance["importance"] = feature_importance["mean_importance"]
     feature_importance.to_csv(tables_dir / "feature_importance.csv", index=False)
     fold_metrics_df.to_csv(tables_dir / "fold_metrics.csv", index=False)
+    aggregated_shap = aggregate_importances(shap_frames)
+    if not aggregated_shap.empty:
+        aggregated_shap["importance"] = aggregated_shap["mean_importance"]
 
     split_info = {
         "strategy": "nested_group_cv",
@@ -172,13 +178,42 @@ def main() -> None:
     save_residual_vs_age(predictions, figures_dir / "residual_vs_age.png")
     save_age_bin_error(age_bin_metrics, figures_dir / "age_bin_error.png")
     save_feature_importance_top20(feature_importance, figures_dir / "feature_importance_top20.png")
+    if not aggregated_shap.empty:
+        shap_dir = run_dir / "shap"
+        shap_dir.mkdir(exist_ok=True)
+        top_k = int(config.get("explain", {}).get("shap", {}).get("top_k", 20))
+        shap_top = save_shap_topk(aggregated_shap, shap_dir, top_k=top_k)
+        save_ranked_bar_plot(
+            shap_top,
+            shap_dir / f"shap_top{top_k}.png",
+            title=f"Top {top_k} SHAP Importance",
+            top_k=len(shap_top),
+        )
+        per_fold_top = []
+        for frame in shap_frames:
+            top_frame = frame.sort_values("importance", ascending=False).head(top_k).copy()
+            per_fold_top.append(top_frame)
+        if per_fold_top:
+            pd.concat(per_fold_top, ignore_index=True).to_csv(shap_dir / f"shap_top{top_k}_by_fold.csv", index=False)
+        aggregated_shap.to_csv(shap_dir / "shap_importance_all.csv", index=False)
+    else:
+        shap_top = pd.DataFrame()
 
     summary = build_run_summary(
-        metrics=pooled_metrics,
+        run_dir=run_dir,
+        config=config,
+        mode="nested_cv",
+        primary_metrics=pooled_metrics,
         split_info=split_info,
-        top_features=feature_importance,
         diagnostics=diagnostics,
-        model_name=config["model"]["name"],
+        predictions=predictions,
+        raw_feature_columns=raw_feature_columns,
+        selected_features=stability_df["feature"].tolist(),
+        feature_importance=feature_importance,
+        age_bin_metrics=age_bin_metrics,
+        subgroup_metrics=subgroup_metrics,
+        fold_metrics_df=fold_metrics_df,
+        shap_top=shap_top,
     )
     save_run_summary(summary, run_dir / "run_summary.md")
     logger.info("Nested CV finished. Outputs written to %s", run_dir)

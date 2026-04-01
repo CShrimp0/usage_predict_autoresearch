@@ -105,6 +105,11 @@ usage_predict_feature_engineering/
   - `feature_importance_top20.png`
 - `models/`
   - `model.joblib` 或 `model_fold_*.joblib`
+- `shap/`（仅当启用且安装了 `shap`）
+  - `shap_importance_all.csv`
+  - `shap_top20.csv`
+  - `shap_top20.png`
+  - nested CV 额外包含 `shap_top20_by_fold.csv`
 
 ## 安装
 

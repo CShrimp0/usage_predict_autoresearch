@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -38,3 +39,17 @@ def compute_shap_importance(estimator, transformed_x, feature_names) -> pd.DataF
         .sort_values("importance", ascending=False)
         .reset_index(drop=True)
     )
+
+
+def save_shap_topk(
+    shap_frame: pd.DataFrame,
+    output_dir: str | Path,
+    top_k: int = 20,
+    prefix: str = "shap",
+) -> pd.DataFrame:
+    """Save SHAP top-k results and return the saved frame."""
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    top_frame = shap_frame.sort_values("importance", ascending=False).head(top_k).reset_index(drop=True)
+    top_frame.to_csv(output_path / f"{prefix}_top{top_k}.csv", index=False)
+    return top_frame
