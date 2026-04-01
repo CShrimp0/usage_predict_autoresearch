@@ -74,24 +74,37 @@ usage_predict_feature_engineering/
 
 ### 输出
 
-每次实验在 `outputs/run_YYYYMMDD_HHMMSS_experiment_name/` 下生成：
+每次实验默认在 `outputs/run_YYYYMMDD_HHMMSS_experiment_name_model_name/` 下生成。
 
-- `config_used.yaml`
-- `run.log`
-- `command.sh`
-- `features_raw.csv`
-- `metrics.json`
-- `predictions.csv`
-- `feature_importance.csv`
-- `selected_features.csv`
-- `split_info.json`
-- `run_summary.md`
-- `predicted_vs_true.png`
-- `bland_altman.png`
-- `residual_hist.png`
-- `residual_vs_age.png`
-- `age_bin_error.png`
-- `feature_importance_top20.png`
+例如：
+
+- `run_20260401_170000_ta_healthy_holdout_ridge`
+- `run_20260401_170500_ta_healthy_nested_cv_random_forest`
+
+- 顶层只保留：
+  - `run_summary.md`
+  - `predictions_readable.csv`
+  - `results_overview.json`
+  - `config_used.yaml`
+  - `run.log`
+  - `command.sh`
+- `tables/`
+  - `features_raw.csv`
+  - `metrics.json`
+  - `predictions.csv`
+  - `feature_importance.csv`
+  - `selected_features.csv`
+  - `split_info.json`
+  - 其他明细表
+- `figures/`
+  - `predicted_vs_true.png`
+  - `bland_altman.png`
+  - `residual_hist.png`
+  - `residual_vs_age.png`
+  - `age_bin_error.png`
+  - `feature_importance_top20.png`
+- `models/`
+  - `model.joblib` 或 `model_fold_*.joblib`
 
 ## 安装
 
@@ -107,6 +120,10 @@ pip install -r requirements.txt
 - `pip install shap`
 - `pip install pyradiomics SimpleITK`
 - `pip install xgboost lightgbm catboost`
+
+说明：
+
+- 默认并行会优先走 `joblib` 的线程后端，以避免 Python 3.13 下偶发的 `ResourceTracker` 退出噪声。
 
 ## 数据接口
 
@@ -136,6 +153,8 @@ data:
 ```
 
 改 Excel/CSV 列名时，优先改配置，不改源码。
+
+默认会过滤到 `18-100` 岁；如需调整，修改 `data.age_filter`。
 
 ## 最小可运行示例
 

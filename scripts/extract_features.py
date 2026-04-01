@@ -18,7 +18,11 @@ def main() -> None:
 
     config = load_runtime_config(args.config, args.override)
     set_random_seed(int(config.get("seed", 42)))
-    run_dir, logger = initialize_run(config, experiment_name=f"{config.get('experiment', {}).get('name', 'experiment')}_features")
+    run_dir, logger = initialize_run(
+        config,
+        experiment_name=f"{config.get('experiment', {}).get('name', 'experiment')}_features",
+        include_model_in_name=False,
+    )
 
     feature_df = extract_feature_table(config)
     output_csv = args.output_csv or str(run_dir / "features_raw.csv")

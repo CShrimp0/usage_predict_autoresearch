@@ -26,9 +26,14 @@ def main() -> None:
     importance_frames = []
     for run_dir in args.run_dir:
         run_path = Path(run_dir)
-        metrics = load_json(run_path / "metrics.json")
+        metrics_path = run_path / "tables" / "metrics.json"
+        if not metrics_path.exists():
+            metrics_path = run_path / "metrics.json"
+        metrics = load_json(metrics_path)
         metrics_rows.append({"run_dir": str(run_path), **metrics.get("outer_cv_pooled", metrics.get("test", metrics))})
-        importance_path = run_path / "feature_importance.csv"
+        importance_path = run_path / "tables" / "feature_importance.csv"
+        if not importance_path.exists():
+            importance_path = run_path / "feature_importance.csv"
         if importance_path.exists():
             frame = pd.read_csv(importance_path)
             if "importance" not in frame.columns and "mean_importance" in frame.columns:

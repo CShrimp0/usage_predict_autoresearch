@@ -9,6 +9,7 @@ from sklearn.inspection import permutation_importance
 
 from explain.coefficients import coefficient_importance
 from utils.feature_names import get_pipeline_feature_names, transform_features
+from utils.parallel import threading_backend_context
 
 LOGGER = logging.getLogger("usage_predict_feature_engineering")
 
@@ -46,15 +47,16 @@ def compute_importance(
 
     permutation_config = config.get("explain", {}).get("permutation_importance", {}) or {}
     if permutation_config.get("enabled", True) and len(feature_names) > 0:
-        result = permutation_importance(
-            estimator,
-            transformed,
-            y_eval,
-            n_repeats=int(permutation_config.get("n_repeats", 20)),
-            random_state=int(config.get("seed", 42)),
-            scoring=config.get("search", {}).get("refit", "neg_mean_absolute_error"),
-            n_jobs=permutation_config.get("n_jobs"),
-        )
+        with threading_backend_context(permutation_config.get("n_jobs")):
+            result = permutation_importance(
+                estimator,
+                transformed,
+                y_eval,
+                n_repeats=int(permutation_config.get("n_repeats", 20)),
+                random_state=int(config.get("seed", 42)),
+                scoring=config.get("search", {}).get("refit", "neg_mean_absolute_error"),
+                n_jobs=permutation_config.get("n_jobs"),
+            )
         frame = pd.DataFrame(
             {
                 "feature": feature_names,

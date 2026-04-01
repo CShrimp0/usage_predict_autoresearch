@@ -27,6 +27,7 @@ from preprocessing.split import assign_holdout_split
 from _common import base_argument_parser, initialize_run, load_runtime_config
 from utils.feature_extraction import extract_feature_table
 from utils.modeling import build_pipeline_and_search, extract_best_params, unwrap_best_estimator
+from utils.parallel import threading_backend_context
 from utils.seeds import set_random_seed
 
 
@@ -37,7 +38,9 @@ def _load_or_extract_features(config: dict, logger, run_dir: Path) -> pd.DataFra
         return pd.read_csv(cache_path)
     feature_df = extract_feature_table(config)
     if config.get("reporting", {}).get("save_feature_table", True):
-        feature_df.to_csv(run_dir / "features_raw.csv", index=False)
+        tables_dir = run_dir / "tables"
+        tables_dir.mkdir(exist_ok=True)
+        feature_df.to_csv(tables_dir / "features_raw.csv", index=False)
     return feature_df
 
 
@@ -73,7 +76,8 @@ def main() -> None:
     x_train = train_df[column_spec.model_input_columns]
     y_train = train_df[column_spec.target_column]
     groups_train = train_df[column_spec.group_column]
-    estimator.fit(x_train, y_train, groups=groups_train)
+    with threading_backend_context(config.get("search", {}).get("n_jobs")):
+        estimator.fit(x_train, y_train, groups=groups_train)
 
     tuned_pipeline = unwrap_best_estimator(estimator)
     best_params = extract_best_params(estimator)
@@ -87,7 +91,8 @@ def main() -> None:
 
     final_pipeline = clone(tuned_pipeline)
     train_val_df = pd.concat([train_df, val_df], ignore_index=True)
-    final_pipeline.fit(train_val_df[column_spec.model_input_columns], train_val_df[column_spec.target_column])
+    with threading_backend_context(config.get("search", {}).get("n_jobs")):
+        final_pipeline.fit(train_val_df[column_spec.model_input_columns], train_val_df[column_spec.target_column])
     test_predictions = final_pipeline.predict(test_df[column_spec.model_input_columns])
 
     prediction_columns = [
@@ -139,17 +144,21 @@ def main() -> None:
         subgroup_metrics=subgroup_metrics,
     )
 
-    save_predicted_vs_true(test_frame, run_dir / "predicted_vs_true.png")
-    save_bland_altman(test_frame, run_dir / "bland_altman.png")
-    save_residual_hist(test_frame, run_dir / "residual_hist.png")
-    save_residual_vs_age(test_frame, run_dir / "residual_vs_age.png")
-    save_age_bin_error(age_bin_metrics, run_dir / "age_bin_error.png")
+    figures_dir = run_dir / "figures"
+    figures_dir.mkdir(exist_ok=True)
+    save_predicted_vs_true(test_frame, figures_dir / "predicted_vs_true.png")
+    save_bland_altman(test_frame, figures_dir / "bland_altman.png")
+    save_residual_hist(test_frame, figures_dir / "residual_hist.png")
+    save_residual_vs_age(test_frame, figures_dir / "residual_vs_age.png")
+    save_age_bin_error(age_bin_metrics, figures_dir / "age_bin_error.png")
     save_feature_importance_top20(
         feature_importance[feature_importance["importance_type"].isin(["permutation", "impurity", "coefficient_abs"])].drop_duplicates("feature"),
-        run_dir / "feature_importance_top20.png",
+        figures_dir / "feature_importance_top20.png",
     )
 
-    joblib.dump(final_pipeline, run_dir / "model.joblib")
+    models_dir = run_dir / "models"
+    models_dir.mkdir(exist_ok=True)
+    joblib.dump(final_pipeline, models_dir / "model.joblib")
     summary = build_run_summary(
         metrics=test_metrics,
         split_info=split_info,

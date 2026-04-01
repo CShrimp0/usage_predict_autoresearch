@@ -9,6 +9,7 @@ from typing import Any
 import pandas as pd
 
 from dataio.load_metadata import load_metadata_table
+from dataio.ta_adapter import load_ta_healthy_dataframe
 
 LOGGER = logging.getLogger("usage_predict_feature_engineering")
 
@@ -21,6 +22,32 @@ CORE_COLUMNS = {
     "age",
     "split",
 }
+
+
+def _apply_age_filter(df: pd.DataFrame, data_config: dict[str, Any]) -> pd.DataFrame:
+    age_filter = data_config.get("age_filter", {}) or {}
+    if not age_filter.get("enabled", True):
+        return df
+
+    min_age = age_filter.get("min_age")
+    max_age = age_filter.get("max_age")
+    keep_mask = pd.Series(True, index=df.index)
+    if min_age is not None:
+        keep_mask &= df["age"] >= float(min_age)
+    if max_age is not None:
+        keep_mask &= df["age"] <= float(max_age)
+
+    before = len(df)
+    filtered = df.loc[keep_mask].reset_index(drop=True)
+    dropped = before - len(filtered)
+    if dropped > 0:
+        LOGGER.warning(
+            "Dropped %d rows outside age filter [%s, %s].",
+            dropped,
+            min_age,
+            max_age,
+        )
+    return filtered
 
 
 def _clean_optional_value(value: Any) -> str | None:
@@ -144,6 +171,16 @@ def summarize_missingness(df: pd.DataFrame) -> dict[str, int]:
 def build_dataframe(config: dict[str, Any]) -> pd.DataFrame:
     """Build the canonical dataframe used by downstream scripts."""
     data_config = config["data"]
+    adapter_name = data_config.get("adapter")
+    if adapter_name == "ta_healthy":
+        standardized = load_ta_healthy_dataframe(config)
+        standardized = _apply_age_filter(standardized, data_config)
+        missing_summary = summarize_missingness(standardized)
+        top_missing = {key: value for key, value in missing_summary.items() if value > 0}
+        if top_missing:
+            LOGGER.warning("Columns with missing values: %s", top_missing)
+        return standardized
+
     metadata = load_metadata_table(
         metadata_path=data_config["metadata_path"],
         file_type=data_config.get("metadata_format", "auto"),
@@ -152,6 +189,7 @@ def build_dataframe(config: dict[str, Any]) -> pd.DataFrame:
     standardized = _rename_columns(metadata, data_config["columns"])
     standardized = _resolve_image_columns(standardized, data_config)
     standardized = _validate_dataframe(standardized, data_config)
+    standardized = _apply_age_filter(standardized, data_config)
 
     LOGGER.info("Loaded %d samples across %d subjects.", len(standardized), standardized["subject_id"].nunique())
     missing_summary = summarize_missingness(standardized)

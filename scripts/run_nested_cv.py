@@ -28,6 +28,7 @@ from _common import base_argument_parser, initialize_run, load_runtime_config
 from selection.stability import aggregate_importances, summarize_selected_features
 from utils.feature_extraction import extract_feature_table
 from utils.modeling import build_pipeline_and_search, extract_best_params, unwrap_best_estimator
+from utils.parallel import threading_backend_context
 from utils.seeds import set_random_seed
 
 
@@ -38,7 +39,9 @@ def _load_or_extract_features(config: dict, logger, run_dir: Path) -> pd.DataFra
         return pd.read_csv(cache_path)
     feature_df = extract_feature_table(config)
     if config.get("reporting", {}).get("save_feature_table", True):
-        feature_df.to_csv(run_dir / "features_raw.csv", index=False)
+        tables_dir = run_dir / "tables"
+        tables_dir.mkdir(exist_ok=True)
+        feature_df.to_csv(tables_dir / "features_raw.csv", index=False)
     return feature_df
 
 
@@ -48,7 +51,7 @@ def main() -> None:
 
     config = load_runtime_config(args.config, args.override)
     set_random_seed(int(config.get("seed", 42)))
-    run_dir, logger = initialize_run(config, experiment_name=f"{config.get('experiment', {}).get('name', 'experiment')}_nested_cv")
+    run_dir, logger = initialize_run(config)
 
     feature_df = _load_or_extract_features(config, logger, run_dir)
     column_spec = build_column_spec(feature_df, config)
@@ -66,11 +69,12 @@ def main() -> None:
         test_df = feature_df.iloc[test_idx].reset_index(drop=True)
 
         estimator = build_pipeline_and_search(column_spec, config)
-        estimator.fit(
-            train_df[column_spec.model_input_columns],
-            train_df[column_spec.target_column],
-            groups=train_df[column_spec.group_column],
-        )
+        with threading_backend_context(config.get("search", {}).get("n_jobs")):
+            estimator.fit(
+                train_df[column_spec.model_input_columns],
+                train_df[column_spec.target_column],
+                groups=train_df[column_spec.group_column],
+            )
         pipeline = unwrap_best_estimator(estimator)
         last_pipeline = pipeline
         best_params_by_fold[f"fold_{fold_idx}"] = extract_best_params(estimator)
@@ -110,7 +114,9 @@ def main() -> None:
                 shap_frame["fold"] = fold_idx
                 importance_frames.append(shap_frame)
 
-        joblib.dump(pipeline, run_dir / f"model_fold_{fold_idx}.joblib")
+        models_dir = run_dir / "models"
+        models_dir.mkdir(exist_ok=True)
+        joblib.dump(pipeline, models_dir / f"model_fold_{fold_idx}.joblib")
 
     predictions = pd.concat(predictions_by_fold, ignore_index=True)
     pooled_metrics = compute_regression_metrics(predictions["age"], predictions["prediction"])
@@ -124,12 +130,14 @@ def main() -> None:
     subgroup_metrics = analyze_subgroups(predictions, config.get("evaluation", {}).get("subgroup_columns", []))
 
     stability_df = summarize_selected_features(selected_feature_lists)
-    stability_df.to_csv(run_dir / "selection_stability.csv", index=False)
+    tables_dir = run_dir / "tables"
+    tables_dir.mkdir(exist_ok=True)
+    stability_df.to_csv(tables_dir / "selection_stability.csv", index=False)
     feature_importance = aggregate_importances(importance_frames)
     if not feature_importance.empty:
         feature_importance["importance"] = feature_importance["mean_importance"]
-    feature_importance.to_csv(run_dir / "feature_importance.csv", index=False)
-    fold_metrics_df.to_csv(run_dir / "fold_metrics.csv", index=False)
+    feature_importance.to_csv(tables_dir / "feature_importance.csv", index=False)
+    fold_metrics_df.to_csv(tables_dir / "fold_metrics.csv", index=False)
 
     split_info = {
         "strategy": "nested_group_cv",
@@ -156,17 +164,19 @@ def main() -> None:
     )
     stability_df.to_csv(run_dir / "selected_features.csv", index=False)
 
-    save_predicted_vs_true(predictions, run_dir / "predicted_vs_true.png")
-    save_bland_altman(predictions, run_dir / "bland_altman.png")
-    save_residual_hist(predictions, run_dir / "residual_hist.png")
-    save_residual_vs_age(predictions, run_dir / "residual_vs_age.png")
-    save_age_bin_error(age_bin_metrics, run_dir / "age_bin_error.png")
-    save_feature_importance_top20(feature_importance, run_dir / "feature_importance_top20.png")
+    figures_dir = run_dir / "figures"
+    figures_dir.mkdir(exist_ok=True)
+    save_predicted_vs_true(predictions, figures_dir / "predicted_vs_true.png")
+    save_bland_altman(predictions, figures_dir / "bland_altman.png")
+    save_residual_hist(predictions, figures_dir / "residual_hist.png")
+    save_residual_vs_age(predictions, figures_dir / "residual_vs_age.png")
+    save_age_bin_error(age_bin_metrics, figures_dir / "age_bin_error.png")
+    save_feature_importance_top20(feature_importance, figures_dir / "feature_importance_top20.png")
 
     summary = build_run_summary(
         metrics=pooled_metrics,
         split_info=split_info,
-        top_features=feature_importance.rename(columns={"mean_importance": "importance"}),
+        top_features=feature_importance,
         diagnostics=diagnostics,
         model_name=config["model"]["name"],
     )

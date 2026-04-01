@@ -6,6 +6,7 @@ seed: 42
 paths:
   outputs_root: /home/szdx/LNX/usage_predict_feature_engineering/outputs
   feature_table: null
+  include_model_in_run_name: true
 
 data:
   metadata_path: /path/to/metadata.csv
@@ -13,6 +14,10 @@ data:
   sheet_name: null
   image_root: null
   mask_root: null
+  age_filter:
+    enabled: true
+    min_age: 18
+    max_age: 100
   drop_rows_missing_target: true
   deduplicate_on: sample_id
   strict_subject_consistency: true
