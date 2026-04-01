@@ -1,0 +1,9 @@
+experiment:
+  name: elasticnet
+
+model:
+  name: elasticnet
+  params:
+    alpha: 0.01
+    l1_ratio: 0.5
+    max_iter: 5000

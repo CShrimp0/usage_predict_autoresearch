@@ -1,0 +1,6 @@
+data:
+  feature_mode: image_plus_metadata
+
+evaluation:
+  subgroup_columns:
+    - sex

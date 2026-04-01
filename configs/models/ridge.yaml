@@ -1,0 +1,7 @@
+experiment:
+  name: ridge
+
+model:
+  name: ridge
+  params:
+    alpha: 1.0

@@ -1,0 +1,10 @@
+experiment:
+  name: random_forest
+
+model:
+  name: random_forest
+  params:
+    n_estimators: 500
+    max_depth: null
+    min_samples_leaf: 1
+    n_jobs: -1

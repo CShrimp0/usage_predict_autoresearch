@@ -1,0 +1,16 @@
+feature_extraction:
+  scopes:
+    - whole_image
+    - roi
+  enabled_groups:
+    - intensity
+    - sharpness
+    - texture
+    - morphology
+    - radiomics
+  radiomics:
+    mode: pyradiomics_roi
+
+data:
+  columns:
+    mask_path: mask_path
