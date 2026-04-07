@@ -432,8 +432,9 @@ class MultimodalDataset(Dataset):
 
 def load_multimodal_dataset(image_dir, excel_path, test_size=0.2, val_size=0.1, random_state=42,
                             image_size=224, use_age_stratify=False, age_bin_width=10,
-                            use_gender=False, use_bmi=False, use_skewness=False, 
-                            use_intensity=False, use_clarity=False):
+                            use_gender=False, use_bmi=False, use_skewness=False,
+                            use_intensity=False, use_clarity=False,
+                            min_age=0, max_age=100):
     """
     加载多模态数据集（图像+辅助特征）
     
@@ -451,6 +452,8 @@ def load_multimodal_dataset(image_dir, excel_path, test_size=0.2, val_size=0.1, 
         use_skewness: 是否使用偏度特征
         use_intensity: 是否使用平均灰度特征
         use_clarity: 是否使用清晰度特征
+        min_age: 最小年龄（包含），默认0岁
+        max_age: 最大年龄（包含），默认100岁
     
     Returns:
         train_dataset, val_dataset, test_dataset, aux_dim: 数据集和辅助特征维度
@@ -533,10 +536,20 @@ def load_multimodal_dataset(image_dir, excel_path, test_size=0.2, val_size=0.1, 
         print(f"有效受试者: {len(subject_images)} 个")
     
     all_subjects = list(subject_images.keys())
+
+    # 年龄过滤
+    if min_age > 0 or max_age < 100:
+        filtered_subjects = [sid for sid in all_subjects if min_age <= age_dict[sid] <= max_age]
+        filtered_count = len(all_subjects) - len(filtered_subjects)
+        if filtered_count > 0:
+            print(f"\n🔍 年龄过滤: 保留 {min_age}-{max_age} 岁范围")
+            print(f"   过滤前: {len(all_subjects)} 个受试者")
+            print(f"   过滤后: {len(filtered_subjects)} 个受试者 (移除 {filtered_count} 个)")
+            all_subjects = filtered_subjects
     
     # 统计信息
     total_subjects = len(all_subjects)
-    total_images = sum(len(imgs) for imgs in subject_images.values())
+    total_images = sum(len(subject_images[sid]) for sid in all_subjects)
     ages_list = [age_dict[sid] for sid in all_subjects]
     
     print(f"找到 {total_subjects} 个受试者，共 {total_images} 张图像")
