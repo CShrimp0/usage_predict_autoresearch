@@ -601,7 +601,6 @@ def load_multimodal_dataset(image_dir, excel_path, test_size=0.2, val_size=0.1, 
     # 训练集增强
     train_transforms_list.extend([
         transforms.RandomRotation(degrees=10),
-        transforms.RandomHorizontalFlip(p=0.5),
         transforms.ColorJitter(brightness=0.2, contrast=0.2),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], 
