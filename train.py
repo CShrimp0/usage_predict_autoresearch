@@ -82,8 +82,8 @@ class ExperimentConfig:
     loss: str = "mae"
     huber_delta: float = 1.0
     lambda_rtm: float = 0.1
-    use_ema: bool = False
-    ema_decay: float = 0.999
+    use_ema: bool = True
+    ema_decay: float = 0.995
 
 
 # ---------------------------------------------------------------------------
