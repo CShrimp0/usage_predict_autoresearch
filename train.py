@@ -45,7 +45,7 @@ class ExperimentConfig:
     model: str = "resnet50"
     pretrained: bool = True
     dropout: float = 0.6
-    aux_hidden_dim: int = 32
+    aux_hidden_dim: int = 64
 
     use_aux_features: bool = True
     aux_gender: bool = True
@@ -314,13 +314,13 @@ class AgeRegressor(nn.Module):
             fused_dim = image_feature_dim
 
         self.head = nn.Sequential(
-            nn.Linear(fused_dim, 256),
+            nn.Linear(fused_dim, 384),
             nn.ReLU(inplace=True),
             nn.Dropout(cfg.dropout),
-            nn.Linear(256, 128),
+            nn.Linear(384, 192),
             nn.ReLU(inplace=True),
             nn.Dropout(cfg.dropout * 0.5),
-            nn.Linear(128, 1),
+            nn.Linear(192, 1),
         )
 
     def forward(self, images: torch.Tensor, aux_features: torch.Tensor | None = None) -> torch.Tensor:
