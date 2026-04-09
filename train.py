@@ -86,7 +86,7 @@ class ExperimentConfig:
     huber_delta: float = 1.0
     lambda_rtm: float = 0.1
     use_ema: bool = True
-    ema_decay: float = 0.997
+    ema_decay: float = 0.998
 
 
 # ---------------------------------------------------------------------------
