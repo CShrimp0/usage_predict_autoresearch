@@ -326,10 +326,10 @@ class AgeRegressor(nn.Module):
 
         self.head = nn.Sequential(
             nn.Linear(fused_dim, 256),
-            nn.GELU(),
+            nn.ReLU(inplace=True),
             nn.Dropout(cfg.dropout),
             nn.Linear(256, 128),
-            nn.GELU(),
+            nn.ReLU(inplace=True),
             nn.Dropout(cfg.dropout * 0.5),
             nn.Linear(128, 1),
         )
