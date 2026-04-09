@@ -325,13 +325,13 @@ class AgeRegressor(nn.Module):
         )
 
         self.head = nn.Sequential(
-            nn.Linear(fused_dim, 320),
+            nn.Linear(fused_dim, 256),
             nn.ReLU(inplace=True),
             nn.Dropout(cfg.dropout),
-            nn.Linear(320, 160),
+            nn.Linear(256, 128),
             nn.ReLU(inplace=True),
             nn.Dropout(cfg.dropout * 0.5),
-            nn.Linear(160, 1),
+            nn.Linear(128, 1),
         )
 
     def forward(self, images: torch.Tensor, aux_features: torch.Tensor | None = None) -> torch.Tensor:
