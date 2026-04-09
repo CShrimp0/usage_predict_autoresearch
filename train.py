@@ -319,7 +319,7 @@ class AgeRegressor(nn.Module):
         gate_hidden_dim = max(32, fused_dim // 16)
         self.fusion_gate = nn.Sequential(
             nn.Linear(fused_dim, gate_hidden_dim),
-            nn.ReLU(inplace=True),
+            nn.SiLU(),
             nn.Linear(gate_hidden_dim, fused_dim),
             nn.Sigmoid(),
         )
