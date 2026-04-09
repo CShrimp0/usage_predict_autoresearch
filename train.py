@@ -302,7 +302,6 @@ class AgeRegressor(nn.Module):
         self.backbone, image_feature_dim = build_backbone(cfg.model, cfg.pretrained)
 
         if aux_input_dim > 0:
-            self.aux_scale = nn.Parameter(torch.ones(1))
             self.aux_branch = nn.Sequential(
                 nn.Linear(aux_input_dim, cfg.aux_hidden_dim),
                 nn.BatchNorm1d(cfg.aux_hidden_dim),
@@ -314,7 +313,6 @@ class AgeRegressor(nn.Module):
             )
             fused_dim = image_feature_dim + cfg.aux_hidden_dim
         else:
-            self.aux_scale = None
             self.aux_branch = None
             fused_dim = image_feature_dim
 
@@ -339,7 +337,7 @@ class AgeRegressor(nn.Module):
     def forward(self, images: torch.Tensor, aux_features: torch.Tensor | None = None) -> torch.Tensor:
         image_features = self.backbone(images)
         if self.aux_branch is not None and aux_features is not None:
-            aux_repr = self.aux_branch(aux_features) * self.aux_scale
+            aux_repr = self.aux_branch(aux_features)
             fused = torch.cat([image_features, aux_repr], dim=1)
         else:
             fused = image_features
