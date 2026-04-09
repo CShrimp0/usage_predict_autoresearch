@@ -223,6 +223,7 @@ def save_checkpoint(
     val_mae: float,
     val_rmse: float,
 ) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
             "epoch": int(epoch),
