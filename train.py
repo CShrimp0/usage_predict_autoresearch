@@ -76,7 +76,7 @@ class ExperimentConfig:
     eta_min: float = 1e-7
     step_size: int = 20
     gamma: float = 0.5
-    lr_patience: int = 4
+    lr_patience: int = 3
     lr_factor: float = 0.696
     lr_min: float = 3.36e-06
     warmup_epochs: int = 5
