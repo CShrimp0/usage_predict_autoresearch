@@ -35,6 +35,10 @@ if [[ ! -f results.tsv ]]; then
   printf "commit\tprediction_mae\tmemory_gb\tstatus\tdescription\n" > results.tsv
 fi
 
+if [[ ! -f results_v2.tsv ]]; then
+  printf "commit\tbest_val_mae\tfinal_test_mae\tmemory_gb\tstatus\tdescription\n" > results_v2.tsv
+fi
+
 PROMPT_FILE="$(mktemp)"
 cleanup() {
   rm -f "${PROMPT_FILE}"
@@ -49,17 +53,23 @@ You are running an autonomous single-GPU autoresearch loop in this repository.
 Constraints:
 - Only modify `train.py`
 - Do not modify `prepare.py`
-- Assume 48 GB VRAM is available and use it intelligently within the 5-minute budget
+- Use validation metrics for routine keep/discard decisions
+- Avoid repeated test peeking during routine search
+- Only run final test evaluation for shortlisted candidates
+- Start from the true golden baseline if the code is not aligned yet
+- Prefer small, interpretable, controlled edits
+- Limit routine mutations to at most two numeric hyperparameter changes or one structural idea per run
+- Assume 48 GB VRAM is available, but do not optimize for memory usage itself
 - Use `conda activate us` semantics implicitly by invoking `/home/szdx/anaconda3/envs/us/bin/python`
 - Run experiments as `CUDA_VISIBLE_DEVICES=0 /home/szdx/anaconda3/envs/us/bin/python train.py > run.log 2>&1`
-- Rank experiments by `prediction_mae`, but decide keep/discard with the metric-weighting rules in `program.md`
-- Append experiment outcomes to `results.tsv` without committing that file
+- Reuse `evaluate.py` or `RUN_FINAL_EVAL=1` only when explicitly confirming shortlisted candidates
+- Append experiment outcomes to `results_v2.tsv` without committing that file
 - If a run crashes, read the last 80 lines of `run.log` and fix that exact crash before trying a new idea
 - Do not introduce any new third-party dependencies
-- When appending to `results.tsv`, write a single raw TSV line with no Markdown fences
-- Keep good commits, revert bad ones
+- When appending to `results_v2.tsv`, write a single raw TSV line with no Markdown fences
+- Keep simple robust improvements; reject noisy tiny gains unless they are confirmed
 
-Begin with the baseline run if it is not yet recorded in `results.tsv`, then continue experimenting.
+Begin with the baseline run if it is not yet recorded in `results_v2.tsv`, then continue experimenting.
 EOF
 
 "${CODEX_BIN}" exec \

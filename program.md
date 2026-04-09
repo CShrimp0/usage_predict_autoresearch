@@ -8,13 +8,13 @@ Read these files for context:
 
 1. `README.md`
 2. `prepare.py` — fixed harness, do not modify during experiments
-3. `train.py` — the only file you edit
+3. `train.py` — the only file you edit during routine autoresearch
+4. `evaluate.py` — fixed confirmation tool for explicit final test evaluation
 
 `prepare.py` owns:
 - the fixed 5-minute training budget
 - data loading and subject-level split logic
-- the fixed evaluation harness
-- output directory conventions
+- the fixed output directory conventions
 
 `train.py` owns:
 - model architecture
@@ -27,178 +27,233 @@ Read these files for context:
 
 This machine has 48 GB of GPU VRAM available.
 
-Use that headroom deliberately:
-- explore larger batch sizes when they fit within the fixed 5-minute budget
-- explore wider or deeper backbones when startup cost is acceptable
-- explore richer multimodal fusion heads if they remain trainable and stable
+Treat extra VRAM as headroom, not as the optimization target.
 
-Do not waste the extra VRAM, but do not accept unstable or overfit models just because they are larger.
+Rules:
+- Do not optimize for GPU memory usage itself.
+- Do not increase batch size just to fill memory.
+- Larger batches, wider heads, or heavier backbones are only worthwhile if they improve validation performance in the 5-minute budget.
 
-## Setup
+## Current Baseline (The Golden Anchor)
 
-1. Work on a dedicated branch named `autoresearch/<tag>`.
-2. Verify the data paths exist:
-   - `/home/szdx/LNX/data/TA/Healthy/Images`
-   - `/home/szdx/LNX/data/TA/characteristics.xlsx`
-3. Initialize `results.tsv` if it does not exist yet with exactly this header:
-   `commit	prediction_mae	memory_gb	status	description`
+The default `train.py` baseline should match this anchor:
+
+- Backbone: `resnet50`
+- Pretrained: `True`
+- Batch Size: `8`
+- Optimizer: `adamw`
+- LR: `3.893e-05`
+- Weight Decay: `4.914e-05`
+- Dropout: `0.4125`
+- Scheduler: `plateau`
+- LR Factor: `0.696`
+- LR Patience: `4`
+- LR Min: `3.36e-06`
+- Warmup Epochs: `5`
+- EMA Decay: `0.999`
+- Loss: `mae`
+
+Start from this anchor unless `train.py` has drifted and first needs to be brought back into alignment.
 
 ## Goal
 
-The primary metric is `prediction_mae`, but model acceptance is not based on that number alone.
+Routine autoresearch is validation-driven.
 
-Each run trains for a fixed 5-minute wall-clock budget, then automatically evaluates the best checkpoint on the held-out prediction set and prints a compact summary.
+Primary search metric:
+- `best_val_mae`
 
-Track both:
-- `prediction_mae` as the main ranking metric
-- `best_val_mae` as the generalization stability check
+Reserved confirmation metric:
+- `prediction_mae` on the held-out test split
 
-## Run Command
+Test-set policy:
+- Do not use the test split to rank routine experiments.
+- Do not peek at the test split after every run.
+- Only run final test evaluation for a small number of shortlisted commits.
 
-Every experiment runs on a single GPU:
+Shortlisting guidance:
+- the current best validation commit
+- a clearly better new validation commit
+- a tiny-gain candidate that survives seed confirmation
+
+## Run Commands
+
+Routine search run:
 
 ```bash
 conda activate us
 CUDA_VISIBLE_DEVICES=0 /home/szdx/anaconda3/envs/us/bin/python train.py > run.log 2>&1
 ```
 
-Key metrics can be extracted with:
+Routine metrics:
 
 ```bash
-grep "^prediction_mae:\|^best_val_mae:\|^peak_vram_mb:" run.log
+grep "^run_mode:\|^best_val_mae:\|^peak_vram_mb:" run.log
+```
+
+Explicit final test confirmation after a training run:
+
+```bash
+conda activate us
+RUN_FINAL_EVAL=1 CUDA_VISIBLE_DEVICES=0 /home/szdx/anaconda3/envs/us/bin/python train.py --final-eval > run.log 2>&1
+```
+
+Or evaluate an existing checkpoint directly:
+
+```bash
+conda activate us
+/home/szdx/anaconda3/envs/us/bin/python evaluate.py --checkpoint outputs/autoresearch/run_xxx/best_model.pth
 ```
 
 ## What You Can Change
 
 - Anything in `train.py`
 
-Typical changes:
-- backbone choice
-- regression head design
-- auxiliary branch design
-- optimizer or scheduler
-- loss function
-- dropout and regularization
-- augmentation settings exposed through `ExperimentConfig`
+Typical high-value directions:
+- local tuning around the golden anchor
+- lightweight regression-head improvements
+- lightweight auxiliary-branch or fusion improvements
+- simple hand-written gating / SE-style modules when justified
+- regularization or optimizer refinements that remain easy to reason about
 
 ## What You Cannot Change
 
 - `prepare.py`
 - the data split
-- the evaluation metric
+- the evaluation metric definitions
 - external dependencies
 
-## Reinforced Rules
+## Search Policy
 
-### 1. Metric Weighting Rule
+### 1. Primary Metric
 
-Never accept a model by looking at `prediction_mae` alone.
+Routine keep/discard decisions are driven by `best_val_mae`.
 
-Acceptance policy:
-- Double improvement: if `prediction_mae` and `best_val_mae` both improve, mark the experiment as `keep`.
-- Overfit circuit breaker: if `prediction_mae` improves only slightly but `best_val_mae` degrades sharply, treat it as overfitting and mark it `discard`.
-- Use a hard warning threshold of roughly 10% relative degradation in `best_val_mae` as an immediate discard signal, even if `prediction_mae` looks a bit better.
-- Prefer robust models in the first tier of `prediction_mae` whose `best_val_mae` stays stable and does not diverge.
+During the main loop:
+- prefer lower `best_val_mae`
+- use `best_val_rmse` and training stability only as supporting context
+- do not treat `prediction_mae` as a routine ranking signal
 
-### 2. Crash Recovery Protocol
+### 2. Candidate Confirmation
 
-If a run crashes and `grep` returns no metrics:
-- you must read the last 80 lines of `run.log`
-- your next edit to `train.py` must focus only on fixing that concrete failure
-- do not introduce a new modeling idea until the crash is resolved
+Only run final test evaluation for shortlisted commits.
 
-Crash handling order:
-1. inspect traceback
-2. repair the exact failure
-3. rerun
-4. only then resume optimization
+Use it for:
+- the current best validation commit
+- a new contender that is clearly better on validation
+- a borderline improvement that survives seed confirmation
 
-### 3. No Dependency Hallucination
+Do not repeatedly evaluate minor variants on the test split.
 
-Do not import or rely on libraries that are not already present in this environment.
+### 3. Mutation Discipline
+
+One run should make a small, interpretable change.
+
+Default rule:
+- at most 2 numeric hyperparameter changes per run
+- at most 1 structural idea per run
+
+Examples of structural ideas:
+- fusion change
+- regression head redesign
+- SE / gating / FiLM-like modulation
+
+Do not bundle many structural changes into one experiment.
+
+### 4. Search Order
+
+Use this order unless there is a concrete reason to deviate:
+
+1. local tuning around the golden anchor
+2. lightweight fusion or head improvements
+3. repeated-seed confirmation for small gains
+4. only then consider larger structural departures
+
+### 5. Stability Rule
+
+Do not trust tiny improvements immediately.
+
+If a new run improves `best_val_mae` by less than `0.05` absolute:
+- treat it as provisional
+- rerun with an additional seed before calling it a true `keep`
+- if the confirmation is mixed or disappears, discard it
+
+If the gain is clearly larger than that threshold and the run is stable, you may keep it without extra confirmation.
+
+### 6. Simplicity Bias
+
+Equal performance with simpler code should win.
+
+Guidance:
+- equal or better validation with simpler code: keep it
+- tiny gain with much more brittle logic: usually reject it
+- more complexity with worse validation: discard it
+
+### 7. Crash Recovery Protocol
+
+If a run crashes and grep returns no metrics:
+- read the last 80 lines of `run.log`
+- fix that exact crash first
+- do not propose a new modeling idea until the crash is resolved
+
+### 8. No Dependency Hallucination
 
 Allowed ecosystem:
 - Python standard library
 - `torch`
 - `torchvision`
-- basic scientific stack already in the repo environment
+- existing scientific stack already present in the environment
 
 Not allowed:
 - `timm`
 - `albumentations`
 - `einops`
-- any other new third-party package
+- any new third-party package
 - `pip install`
 
-If you need a special block such as attention, a custom loss, or a fusion module, implement it directly inside `train.py`.
+If you need a special block or loss, implement it directly inside `train.py`.
 
-### 4. Strict TSV Formatting
+## Logging
 
-When appending to `results.tsv`, write a pure tab-separated line only.
+Historical experiments already live in `results.tsv`.
 
-Never wrap the line in Markdown fences.
-Never emit ```tsv or ``` around the record.
+For the validation-driven loop, append new records to `results_v2.tsv` with this header:
 
-Required format:
-`commit_hash	prediction_mae	memory_gb	status	description`
+`commit	best_val_mae	final_test_mae	memory_gb	status	description`
 
-Example valid line:
-`a1b2c3d	8.912340	12.5	keep	added spatial attention`
-
-## Logging Results
-
-Log every experiment to `results.tsv` as tab-separated values with these rules:
+Logging rules:
+- `final_test_mae` stays empty for routine validation-only runs
+- fill `final_test_mae` only when an explicit final test confirmation is performed
 - use `0.000000` and `0.0` for crashes
 - memory is `peak_vram_mb / 1024`, rounded to one decimal
-- status is one of `keep`, `discard`, `crash`
-- the description must be short, plain text, and contain no tabs
+- status is one of `keep`, `candidate`, `discard`, `crash`
+- description must be short plain text with no tabs
 - append only a single raw TSV line per experiment result
+
+Never wrap TSV output in Markdown fences.
 
 ## Experiment Loop
 
-Loop forever:
+Loop carefully:
 
-1. Inspect the current branch and commit.
-2. Change `train.py`.
+1. Inspect the current branch and current good commit.
+2. Make a small edit to `train.py`.
 3. Commit the change.
-4. Run:
-
-```bash
-conda activate us
-CUDA_VISIBLE_DEVICES=0 /home/szdx/anaconda3/envs/us/bin/python train.py > run.log 2>&1
-```
-
-5. Read the outcome:
-
-```bash
-grep "^prediction_mae:\|^best_val_mae:\|^peak_vram_mb:" run.log
-```
-
-6. If grep returns nothing, inspect the crash immediately:
-
-```bash
-tail -n 80 run.log
-```
-
-7. Append the result to `results.tsv` without committing that file.
-8. Decide `keep` or `discard` using the Metric Weighting Rule, not `prediction_mae` alone.
-9. If the run is `keep`, continue from that commit.
-10. If the run is `discard` or `crash`, reset to the previous good commit after recording the result.
-
-## Simplicity Rule
-
-Small wins are only worth keeping if the code stays coherent.
-
-Examples:
-- Equal or better performance with simpler code: keep it.
-- Tiny improvement with a lot of brittle logic: probably discard it.
-- Worse performance with more complexity: discard it.
+4. Run the validation-only training command.
+5. Read the outcome from `run.log`.
+6. If grep returns nothing, inspect `tail -n 80 run.log` and fix the crash.
+7. Append a single line to `results_v2.tsv` without committing that file.
+8. Decide `keep`, `candidate`, or `discard` using validation performance and simplicity.
+9. If a run is `candidate`, confirm it with an additional seed before upgrading it to `keep`.
+10. Only run final test evaluation for shortlisted commits after they have earned confirmation.
+11. If a run is `discard` or `crash`, reset to the previous good commit after recording the result.
 
 ## Timeout Rule
 
-- A normal run should finish a bit over 5 minutes because startup and final evaluation are outside the 5-minute training budget.
+- Training budget is fixed at 5 minutes inside `prepare.py`.
+- Startup and optional final evaluation sit outside that training budget.
+- A routine run should still finish well under 10 minutes.
 - If a run exceeds 10 minutes total, kill it and treat it as a failure.
 
 ## First Run
 
-If the baseline is not yet recorded in `results.tsv`, the first run must be the current unmodified baseline.
+If the golden baseline is not yet recorded in `results_v2.tsv`, the first run should be the unmodified aligned baseline.

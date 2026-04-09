@@ -14,6 +14,7 @@ env/
 outputs/
 run.log
 results.tsv
+results_v2.tsv
 
 *.pth
 *.pt

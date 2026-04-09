@@ -3,13 +3,16 @@ Single-GPU autoresearch training script for ultrasound age prediction.
 
 The intended workflow is:
     python train.py > run.log 2>&1
+    RUN_FINAL_EVAL=1 python train.py --final-eval > run.log 2>&1
 
 During autoresearch, this is the only file that should be edited.
 """
 
 from __future__ import annotations
 
+import argparse
 import math
+import os
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -44,8 +47,8 @@ class ExperimentConfig:
 
     model: str = "resnet50"
     pretrained: bool = True
-    dropout: float = 0.6
-    aux_hidden_dim: int = 64
+    dropout: float = 0.4125
+    aux_hidden_dim: int = 32
 
     use_aux_features: bool = True
     aux_gender: bool = True
@@ -61,21 +64,21 @@ class ExperimentConfig:
     saturation_jitter: float = 0.0
     hue_jitter: float = 0.0
 
-    batch_size: int = 32
+    batch_size: int = 8
     num_workers: int = 8
     epochs: int = 500
     patience: int = 100
-    lr: float = 1e-4
-    weight_decay: float = 1e-4
+    lr: float = 3.893e-05
+    weight_decay: float = 4.914e-05
     optimizer: str = "adamw"
     momentum: float = 0.9
-    scheduler: str = "cosine"
+    scheduler: str = "plateau"
     eta_min: float = 1e-7
     step_size: int = 20
     gamma: float = 0.5
-    lr_patience: int = 10
-    lr_factor: float = 0.5
-    lr_min: float = 1e-7
+    lr_patience: int = 4
+    lr_factor: float = 0.696
+    lr_min: float = 3.36e-06
     warmup_epochs: int = 5
     max_grad_norm: float = 1.0
 
@@ -83,7 +86,7 @@ class ExperimentConfig:
     huber_delta: float = 1.0
     lambda_rtm: float = 0.1
     use_ema: bool = True
-    ema_decay: float = 0.995
+    ema_decay: float = 0.999
 
 
 # ---------------------------------------------------------------------------
@@ -314,13 +317,13 @@ class AgeRegressor(nn.Module):
             fused_dim = image_feature_dim
 
         self.head = nn.Sequential(
-            nn.Linear(fused_dim, 384),
+            nn.Linear(fused_dim, 256),
             nn.ReLU(inplace=True),
             nn.Dropout(cfg.dropout),
-            nn.Linear(384, 192),
+            nn.Linear(256, 128),
             nn.ReLU(inplace=True),
             nn.Dropout(cfg.dropout * 0.5),
-            nn.Linear(192, 1),
+            nn.Linear(128, 1),
         )
 
     def forward(self, images: torch.Tensor, aux_features: torch.Tensor | None = None) -> torch.Tensor:
@@ -422,8 +425,33 @@ def validate(
 # Main entry point
 # ---------------------------------------------------------------------------
 
-def main() -> dict[str, float | int | str]:
+def create_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Train usage_predict_autoresearch")
+    parser.add_argument(
+        "--final-eval",
+        action="store_true",
+        help="Run explicit final test evaluation after validation-driven training.",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Override the default seed for confirmation reruns.",
+    )
+    return parser
+
+
+def env_flag(name: str) -> bool:
+    value = os.getenv(name, "")
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def main() -> dict[str, object]:
+    args = create_arg_parser().parse_args()
     cfg = ExperimentConfig()
+    if args.seed is not None:
+        cfg.seed = int(args.seed)
+    final_eval_enabled = bool(args.final_eval or env_flag("RUN_FINAL_EVAL"))
     prepare.ensure_data_exists(cfg.image_dir, cfg.excel_path)
     prepare.set_seed(cfg.seed, deterministic=cfg.deterministic)
 
@@ -431,7 +459,7 @@ def main() -> dict[str, float | int | str]:
     run_dir = prepare.make_run_dir(cfg.output_root)
     prepare.save_json(run_dir / "config.json", asdict(cfg))
 
-    train_dataset, val_dataset, test_dataset, metadata = prepare.build_datasets(cfg)
+    train_dataset, val_dataset, _test_dataset, metadata = prepare.build_datasets(cfg)
     use_aux = bool(metadata["use_aux_features"])
     aux_dim = int(metadata["aux_dim"])
 
@@ -449,14 +477,6 @@ def main() -> dict[str, float | int | str]:
         num_workers=cfg.num_workers,
         seed=cfg.seed + 1,
     )
-    test_loader = prepare.make_dataloader(
-        test_dataset,
-        batch_size=cfg.batch_size,
-        shuffle=False,
-        num_workers=cfg.num_workers,
-        seed=cfg.seed + 2,
-    )
-
     model = AgeRegressor(cfg, aux_input_dim=aux_dim).to(device)
     criterion = build_loss(cfg, metadata["train_age_mean"], metadata["train_age_std"])
     optimizer = build_optimizer(cfg, model)
@@ -479,6 +499,8 @@ def main() -> dict[str, float | int | str]:
 
     print(f"device:            {device}")
     print(f"output_dir:        {run_dir}")
+    print(f"run_mode:          {'final_eval' if final_eval_enabled else 'validation_only'}")
+    print(f"seed:              {cfg.seed}")
     print(f"use_aux_features:  {use_aux}")
     print(f"aux_dim:           {aux_dim}")
     print(f"train_samples:     {metadata['sample_counts']['train']}")
@@ -578,12 +600,6 @@ def main() -> dict[str, float | int | str]:
 
     checkpoint = torch.load(best_checkpoint_path, map_location=device, weights_only=False)
     model.load_state_dict(checkpoint["model_state_dict"])
-    prediction_metrics = prepare.evaluate_regression(
-        model,
-        test_loader,
-        device,
-        use_aux=use_aux,
-    )
 
     peak_vram_mb = 0.0
     if device.type == "cuda":
@@ -591,8 +607,7 @@ def main() -> dict[str, float | int | str]:
 
     total_seconds = time.time() - overall_start
     metrics = {
-        "prediction_mae": float(prediction_metrics["mae"]),
-        "prediction_rmse": float(prediction_metrics["rmse"]),
+        "run_mode": "final_eval" if final_eval_enabled else "validation_only",
         "best_val_mae": float(best_val_mae),
         "best_val_rmse": float(checkpoint["best_val_rmse"]),
         "training_seconds": float(training_seconds),
@@ -601,27 +616,49 @@ def main() -> dict[str, float | int | str]:
         "best_epoch": int(best_epoch),
         "num_params_M": float(count_parameters(model)),
         "output_dir": str(run_dir),
+        "final_test_mae": None,
+        "final_test_rmse": None,
     }
 
-    prepare.save_json(
-        run_dir / "metrics.json",
-        {
-            "summary": metrics,
-            "dataset": metadata,
-            "config": asdict(cfg),
-        },
-    )
+    final_test_summary = None
+    if final_eval_enabled:
+        import evaluate
+
+        final_test_summary = evaluate.evaluate_checkpoint(
+            best_checkpoint_path,
+            split="test",
+            batch_size=cfg.batch_size,
+            num_workers=cfg.num_workers,
+            device_override=str(device),
+            output_json=run_dir / "test_eval.json",
+        )
+        metrics["final_test_mae"] = float(final_test_summary["prediction_mae"])
+        metrics["final_test_rmse"] = float(final_test_summary["prediction_rmse"])
+
+    metrics_payload = {
+        "summary": metrics,
+        "dataset": metadata,
+        "config": asdict(cfg),
+    }
+    if final_test_summary is not None:
+        metrics_payload["final_test"] = final_test_summary
+    prepare.save_json(run_dir / "metrics.json", metrics_payload)
 
     print("---")
-    print(f"prediction_mae:   {metrics['prediction_mae']:.6f}")
-    print(f"prediction_rmse:  {metrics['prediction_rmse']:.6f}")
+    print(f"run_mode:         {metrics['run_mode']}")
     print(f"best_val_mae:     {metrics['best_val_mae']:.6f}")
+    print(f"best_val_rmse:    {metrics['best_val_rmse']:.6f}")
     print(f"training_seconds: {metrics['training_seconds']:.1f}")
     print(f"total_seconds:    {metrics['total_seconds']:.1f}")
     print(f"peak_vram_mb:     {metrics['peak_vram_mb']:.1f}")
     print(f"best_epoch:       {metrics['best_epoch']}")
     print(f"num_params_M:     {metrics['num_params_M']:.2f}")
     print(f"output_dir:       {metrics['output_dir']}")
+    if final_test_summary is not None:
+        print(f"prediction_mae:   {metrics['final_test_mae']:.6f}")
+        print(f"prediction_rmse:  {metrics['final_test_rmse']:.6f}")
+    else:
+        print("final_eval:       disabled")
 
     return metrics
 

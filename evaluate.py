@@ -4,6 +4,9 @@ Fixed evaluation script for usage_predict autoresearch.
 Usage:
     conda activate us
     python evaluate.py --checkpoint outputs/autoresearch/run_xxx/best_model.pth
+
+This script is intended for explicit candidate confirmation, not routine
+search-time ranking.
 """
 
 from __future__ import annotations
@@ -96,7 +99,7 @@ def evaluate_checkpoint(
 
 
 def create_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Evaluate a usage_predict_autoresearch checkpoint")
+    parser = argparse.ArgumentParser(description="Evaluate a shortlisted usage_predict_autoresearch checkpoint")
     parser.add_argument("--checkpoint", required=True, help="Path to best_model.pth")
     parser.add_argument("--split", default="test", choices=["train", "val", "test"], help="Dataset split to evaluate")
     parser.add_argument("--batch-size", type=int, default=None, help="Override batch size for evaluation")
