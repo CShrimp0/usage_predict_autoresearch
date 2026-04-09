@@ -341,7 +341,7 @@ class AgeRegressor(nn.Module):
             fused = torch.cat([image_features, aux_repr], dim=1)
         else:
             fused = image_features
-        fused = fused * (0.5 + self.fusion_gate(fused))
+        fused = fused * self.fusion_gate(fused)
         return self.head(fused).squeeze(-1)
 
 
