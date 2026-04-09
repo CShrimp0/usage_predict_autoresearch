@@ -316,6 +316,14 @@ class AgeRegressor(nn.Module):
             self.aux_branch = None
             fused_dim = image_feature_dim
 
+        gate_hidden_dim = max(32, fused_dim // 16)
+        self.fusion_gate = nn.Sequential(
+            nn.Linear(fused_dim, gate_hidden_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(gate_hidden_dim, fused_dim),
+            nn.Sigmoid(),
+        )
+
         self.head = nn.Sequential(
             nn.Linear(fused_dim, 256),
             nn.ReLU(inplace=True),
@@ -333,6 +341,7 @@ class AgeRegressor(nn.Module):
             fused = torch.cat([image_features, aux_repr], dim=1)
         else:
             fused = image_features
+        fused = fused * self.fusion_gate(fused)
         return self.head(fused).squeeze(-1)
 
 
