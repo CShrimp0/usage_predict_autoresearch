@@ -316,7 +316,7 @@ class AgeRegressor(nn.Module):
             self.aux_branch = None
             fused_dim = image_feature_dim
 
-        gate_hidden_dim = max(16, fused_dim // 32)
+        gate_hidden_dim = max(32, fused_dim // 16)
         self.fusion_gate = nn.Sequential(
             nn.Linear(fused_dim, gate_hidden_dim),
             nn.ReLU(inplace=True),
