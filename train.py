@@ -324,7 +324,6 @@ class AgeRegressor(nn.Module):
             nn.Linear(gate_hidden_dim, fused_dim),
             nn.Sigmoid(),
         )
-        self.post_gate_dropout = nn.Dropout(0.1)
 
         self.head = nn.Sequential(
             nn.Linear(fused_dim, 256),
@@ -344,7 +343,6 @@ class AgeRegressor(nn.Module):
         else:
             fused = image_features
         fused = fused * self.fusion_gate(fused)
-        fused = self.post_gate_dropout(fused)
         return self.head(fused).squeeze(-1)
 
 
