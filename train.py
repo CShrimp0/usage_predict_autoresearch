@@ -80,7 +80,7 @@ class ExperimentConfig:
     lr_factor: float = 0.696
     lr_min: float = 3.36e-06
     warmup_epochs: int = 5
-    max_grad_norm: float = 1.0
+    max_grad_norm: float = 0.5
 
     loss: str = "mae"
     huber_delta: float = 1.0
