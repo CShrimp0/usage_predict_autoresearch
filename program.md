@@ -163,10 +163,15 @@ Do not bundle many structural changes into one experiment.
 
 Use this order unless there is a concrete reason to deviate:
 
-1. local tuning around the golden anchor
-2. lightweight fusion or head improvements
-3. repeated-seed confirmation for small gains
-4. only then consider larger structural departures
+(Briefly) Verify the golden anchor is stable.
+
+(High Priority) Structural innovations: lightweight fusion, hand-written gating (SE/FiLM), or head improvements.
+
+Repeated-seed confirmation for small structural gains.
+
+Only then consider larger structural departures.
+
+Note: Do not waste excessive runs on pure numerical hyperparameter tuning; the golden anchor is already near optimal numerically.
 
 ### 5. Stability Rule
 
@@ -212,11 +217,26 @@ Not allowed:
 
 If you need a special block or loss, implement it directly inside `train.py`.
 
-## Logging
+## Logging (The Reflection Memory)
 
-Historical experiments already live in `results.tsv`.
+Historical experiments live in `results_v2.tsv`. This file acts as your long-term memory. It must capture not just *what* happened, but *why* it happened.
 
-For the validation-driven loop, append new records to `results_v2.tsv` with this header:
+Append new records with this exact header:
+`commit	best_val_mae	predictval	status	mutation_type	action	insight`
+
+**Column Definitions:**
+- `best_val_mae`: The primary validation metric.
+- `predictval`: Optional held-out test confirmation metric for shortlisted candidates. Leave it empty for routine validation-only runs.
+- `status`: `keep`, `candidate`, `discard`, or `crash`.
+- `mutation_type`: Categorize your change (`Arch`, `Loss`, `Optim`, `Reg`, `Data`).
+- `action`: What exact structural or numeric change did you make? (e.g., "Added CBAM after layer4", "Lowered base LR to 1e-5").
+- `insight`: **(Crucial)** Why did it succeed or fail? What is the takeaway for future runs? (e.g., "Crash: tensor shape mismatch in fusion head" or "Discard: validation degraded by 15%, CBAM without extra dropout causes immediate overfitting").
+
+Logging strict rules:
+- Format as a single raw TSV line. No Markdown fences (```tsv).
+- Do not use tabs (`\t`) or newlines (`\n`) inside the text fields (`action` and `insight`), replace them with spaces to keep the TSV format unbroken.
+- For crashes, `best_val_mae` is `0.000000`.
+- Leave `predictval` empty unless an explicit final confirmation was run.
 
 `commit	best_val_mae	final_test_mae	memory_gb	status	description`
 
@@ -233,19 +253,20 @@ Never wrap TSV output in Markdown fences.
 
 ## Experiment Loop
 
-Loop carefully:
+Loop carefully using the Scientific Method:
 
-1. Inspect the current branch and current good commit.
-2. Make a small edit to `train.py`.
-3. Commit the change.
-4. Run the validation-only training command.
-5. Read the outcome from `run.log`.
-6. If grep returns nothing, inspect `tail -n 80 run.log` and fix the crash.
-7. Append a single line to `results_v2.tsv` without committing that file.
-8. Decide `keep`, `candidate`, or `discard` using validation performance and simplicity.
-9. If a run is `candidate`, confirm it with an additional seed before upgrading it to `keep`.
-10. Only run final test evaluation for shortlisted commits after they have earned confirmation.
-11. If a run is `discard` or `crash`, reset to the previous good commit after recording the result.
+1. **Analyze:** Read `results_v2.tsv` to understand past failures and successes (the `insight` column is your guide).
+2. **Hypothesize:** Based on the insights, decide on ONE logical mutation (Arch, Loss, Optim, etc.).
+3. **Execute:** Edit `train.py` to implement the mutation.
+4. **Commit:** Commit the change.
+5. **Train:** Run the validation-only training command.
+6. **Observe:** Read the outcome from `run.log`. If grep returns nothing, inspect `tail -n 80 run.log` to find the crash traceback.
+7. **Reflect & Log:** - Analyze the metric gap between training and validation. 
+   - Formulate an `insight` about why this mutation behaved the way it did.
+   - Append the strictly formatted single TSV line to `results_v2.tsv`. Do NOT commit this file.
+8. **Decide:** Evaluate `keep`, `candidate`, or `discard` using the Metric Weighting and Simplicity rules.
+9. **Confirm:** If a run is `candidate`, confirm it with an additional seed before upgrading it to `keep`.
+10. **Revert:** If a run is `discard` or `crash`, you MUST reset the code to the previous good commit (`git checkout HEAD -- train.py`) before starting the next loop.
 
 ## Timeout Rule
 
