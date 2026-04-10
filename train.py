@@ -313,6 +313,8 @@ class AgeRegressor(nn.Module):
                 nn.ReLU(inplace=True),
             )
             self.image_film = nn.Linear(cfg.aux_hidden_dim, image_feature_dim * 2)
+            nn.init.zeros_(self.image_film.weight)
+            nn.init.zeros_(self.image_film.bias)
             fused_dim = image_feature_dim + cfg.aux_hidden_dim
         else:
             self.aux_branch = None
