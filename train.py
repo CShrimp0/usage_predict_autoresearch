@@ -303,7 +303,6 @@ class AgeRegressor(nn.Module):
         self.backbone, image_feature_dim = build_backbone(cfg.model, cfg.pretrained)
 
         if aux_input_dim > 0:
-            film_dim = 512
             self.aux_branch = nn.Sequential(
                 nn.Linear(aux_input_dim, cfg.aux_hidden_dim),
                 nn.BatchNorm1d(cfg.aux_hidden_dim),
@@ -313,15 +312,10 @@ class AgeRegressor(nn.Module):
                 nn.BatchNorm1d(cfg.aux_hidden_dim),
                 nn.ReLU(inplace=True),
             )
-            self.image_proj = nn.Sequential(
-                nn.Linear(image_feature_dim, film_dim),
-                nn.ReLU(inplace=True),
-            )
-            self.image_film = nn.Linear(cfg.aux_hidden_dim, film_dim * 2)
-            fused_dim = film_dim + cfg.aux_hidden_dim
+            self.image_film = nn.Linear(cfg.aux_hidden_dim, image_feature_dim * 2)
+            fused_dim = image_feature_dim + cfg.aux_hidden_dim
         else:
             self.aux_branch = None
-            self.image_proj = None
             self.image_film = None
             fused_dim = image_feature_dim
 
@@ -339,7 +333,6 @@ class AgeRegressor(nn.Module):
         image_features = self.backbone(images)
         if self.aux_branch is not None and aux_features is not None:
             aux_repr = self.aux_branch(aux_features)
-            image_features = self.image_proj(image_features)
             gamma, beta = self.image_film(aux_repr).chunk(2, dim=1)
             image_features = image_features * (1.0 + 0.1 * torch.tanh(gamma)) + 0.1 * beta
             fused = torch.cat([image_features, aux_repr], dim=1)
