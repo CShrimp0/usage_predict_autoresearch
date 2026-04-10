@@ -454,17 +454,19 @@ def env_flag(name: str) -> bool:
 def main() -> dict[str, object]:
     args = create_arg_parser().parse_args()
     cfg = ExperimentConfig()
-    if args.seed is not None:
-        cfg.seed = int(args.seed)
+    train_seed = cfg.seed if args.seed is None else int(args.seed)
     final_eval_enabled = bool(args.final_eval or env_flag("RUN_FINAL_EVAL"))
     prepare.ensure_data_exists(cfg.image_dir, cfg.excel_path)
-    prepare.set_seed(cfg.seed, deterministic=cfg.deterministic)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     run_dir = prepare.make_run_dir(cfg.output_root)
     prepare.save_json(run_dir / "config.json", asdict(cfg))
 
     train_dataset, val_dataset, _test_dataset, metadata = prepare.build_datasets(cfg)
+    prepare.set_seed(train_seed, deterministic=cfg.deterministic)
+    metadata = dict(metadata)
+    metadata["split_seed"] = int(cfg.seed)
+    metadata["train_seed"] = int(train_seed)
     use_aux = bool(metadata["use_aux_features"])
     aux_dim = int(metadata["aux_dim"])
 
@@ -473,14 +475,14 @@ def main() -> dict[str, object]:
         batch_size=cfg.batch_size,
         shuffle=True,
         num_workers=cfg.num_workers,
-        seed=cfg.seed,
+        seed=train_seed,
     )
     val_loader = prepare.make_dataloader(
         val_dataset,
         batch_size=cfg.batch_size,
         shuffle=False,
         num_workers=cfg.num_workers,
-        seed=cfg.seed + 1,
+        seed=train_seed + 1,
     )
     model = AgeRegressor(cfg, aux_input_dim=aux_dim).to(device)
     criterion = build_loss(cfg, metadata["train_age_mean"], metadata["train_age_std"])
@@ -505,7 +507,8 @@ def main() -> dict[str, object]:
     print(f"device:            {device}")
     print(f"output_dir:        {run_dir}")
     print(f"run_mode:          {'final_eval' if final_eval_enabled else 'validation_only'}")
-    print(f"seed:              {cfg.seed}")
+    print(f"split_seed:        {cfg.seed}")
+    print(f"train_seed:        {train_seed}")
     print(f"use_aux_features:  {use_aux}")
     print(f"aux_dim:           {aux_dim}")
     print(f"train_samples:     {metadata['sample_counts']['train']}")
@@ -613,6 +616,8 @@ def main() -> dict[str, object]:
     total_seconds = time.time() - overall_start
     metrics = {
         "run_mode": "final_eval" if final_eval_enabled else "validation_only",
+        "split_seed": int(cfg.seed),
+        "train_seed": int(train_seed),
         "best_val_mae": float(best_val_mae),
         "best_val_rmse": float(checkpoint["best_val_rmse"]),
         "training_seconds": float(training_seconds),
@@ -651,6 +656,8 @@ def main() -> dict[str, object]:
 
     print("---")
     print(f"run_mode:         {metrics['run_mode']}")
+    print(f"split_seed:       {metrics['split_seed']}")
+    print(f"train_seed:       {metrics['train_seed']}")
     print(f"best_val_mae:     {metrics['best_val_mae']:.6f}")
     print(f"best_val_rmse:    {metrics['best_val_rmse']:.6f}")
     print(f"training_seconds: {metrics['training_seconds']:.1f}")
