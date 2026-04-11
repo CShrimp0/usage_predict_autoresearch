@@ -6,6 +6,7 @@ TAG="${1:-$(date +%b%d | tr '[:upper:]' '[:lower:]')}"
 BRANCH="autoresearch/${TAG}"
 MODEL="${MODEL:-gpt-5.2}"
 CODEX_BIN="${CODEX_BIN:-}"
+MAX_EXPERIMENTS="${MAX_EXPERIMENTS:-}"
 
 cd "${ROOT_DIR}"
 
@@ -36,7 +37,7 @@ if [[ ! -f results.tsv ]]; then
 fi
 
 if [[ ! -f results_v2.tsv ]]; then
-  printf "commit\tbest_val_mae\tfinal_test_mae\tmemory_gb\tstatus\tdescription\n" > results_v2.tsv
+  printf "commit\tbest_val_mae\ttest_mae\tstatus\tmutation_type\taction\tinsight\n" > results_v2.tsv
 fi
 
 PROMPT_FILE="$(mktemp)"
@@ -71,6 +72,10 @@ Constraints:
 
 Begin with the baseline run if it is not yet recorded in `results_v2.tsv`, then continue experimenting.
 EOF
+
+if [[ -n "${MAX_EXPERIMENTS}" ]]; then
+  printf "\nStop after %s completed experiment loops.\n" "${MAX_EXPERIMENTS}" >> "${PROMPT_FILE}"
+fi
 
 "${CODEX_BIN}" exec \
   --dangerously-bypass-approvals-and-sandbox \

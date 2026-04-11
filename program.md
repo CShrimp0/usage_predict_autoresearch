@@ -222,11 +222,11 @@ If you need a special block or loss, implement it directly inside `train.py`.
 Historical experiments live in `results_v2.tsv`. This file acts as your long-term memory. It must capture not just *what* happened, but *why* it happened.
 
 Append new records with this exact header:
-`commit	best_val_mae	predictval	status	mutation_type	action	insight`
+`commit	best_val_mae	test_mae	status	mutation_type	action	insight`
 
 **Column Definitions:**
 - `best_val_mae`: The primary validation metric.
-- `predictval`: Optional held-out test confirmation metric for shortlisted candidates. Leave it empty for routine validation-only runs.
+- `test_mae`: Optional held-out test confirmation metric for shortlisted candidates. Leave it empty for routine validation-only runs.
 - `status`: `keep`, `candidate`, `discard`, or `crash`.
 - `mutation_type`: Categorize your change (`Arch`, `Loss`, `Optim`, `Reg`, `Data`).
 - `action`: What exact structural or numeric change did you make? (e.g., "Added CBAM after layer4", "Lowered base LR to 1e-5").
@@ -236,18 +236,7 @@ Logging strict rules:
 - Format as a single raw TSV line. No Markdown fences (```tsv).
 - Do not use tabs (`\t`) or newlines (`\n`) inside the text fields (`action` and `insight`), replace them with spaces to keep the TSV format unbroken.
 - For crashes, `best_val_mae` is `0.000000`.
-- Leave `predictval` empty unless an explicit final confirmation was run.
-
-`commit	best_val_mae	final_test_mae	memory_gb	status	description`
-
-Logging rules:
-- `final_test_mae` stays empty for routine validation-only runs
-- fill `final_test_mae` only when an explicit final test confirmation is performed
-- use `0.000000` and `0.0` for crashes
-- memory is `peak_vram_mb / 1024`, rounded to one decimal
-- status is one of `keep`, `candidate`, `discard`, `crash`
-- description must be short plain text with no tabs
-- append only a single raw TSV line per experiment result
+- Leave `test_mae` empty unless an explicit final confirmation was run.
 
 Never wrap TSV output in Markdown fences.
 
