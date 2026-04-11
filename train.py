@@ -179,31 +179,12 @@ def build_loss(cfg: ExperimentConfig, train_age_mean: float, train_age_std: floa
 
 
 def build_optimizer(cfg: ExperimentConfig, model: nn.Module) -> optim.Optimizer:
-    backbone_lr_mult = 0.5
-    head_lr_mult = 1.5
-    backbone_params = []
-    head_params = []
-    for name, param in model.named_parameters():
-        if not param.requires_grad:
-            continue
-        if name.startswith("backbone."):
-            backbone_params.append(param)
-        else:
-            head_params.append(param)
-
-    if backbone_params and head_params:
-        param_groups = [
-            {"params": backbone_params, "lr": cfg.lr * backbone_lr_mult, "lr_mult": backbone_lr_mult},
-            {"params": head_params, "lr": cfg.lr * head_lr_mult, "lr_mult": head_lr_mult},
-        ]
-    else:
-        param_groups = model.parameters()
-
     if cfg.optimizer == "adamw":
-        return optim.AdamW(param_groups, weight_decay=cfg.weight_decay, betas=(0.9, 0.999))
+        return optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay, betas=(0.9, 0.999))
     if cfg.optimizer == "sgd":
         return optim.SGD(
-            param_groups,
+            model.parameters(),
+            lr=cfg.lr,
             weight_decay=cfg.weight_decay,
             momentum=cfg.momentum,
         )
@@ -546,8 +527,7 @@ def main() -> dict[str, object]:
         if cfg.warmup_epochs > 0 and epoch <= cfg.warmup_epochs:
             warmup_lr = cfg.lr * epoch / cfg.warmup_epochs
             for param_group in optimizer.param_groups:
-                lr_mult = float(param_group.get("lr_mult", 1.0))
-                param_group["lr"] = warmup_lr * lr_mult
+                param_group["lr"] = warmup_lr
 
         train_loss, train_mae = train_one_epoch(
             model,
