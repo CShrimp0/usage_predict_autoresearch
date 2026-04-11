@@ -73,9 +73,9 @@ class ExperimentConfig:
     weight_decay: float = 4.914e-05
     optimizer: str = "adamw"
     momentum: float = 0.9
-    scheduler: str = "step"
+    scheduler: str = "plateau"
     eta_min: float = 1e-7
-    step_size: int = 15
+    step_size: int = 20
     gamma: float = 0.5
     lr_patience: int = 4
     lr_factor: float = 0.696
