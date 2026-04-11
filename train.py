@@ -252,12 +252,13 @@ def _load_model_with_weights(factory, weights_enum_name: str, pretrained: bool, 
 
 def build_backbone(model_name: str, pretrained: bool) -> tuple[nn.Module, int]:
     if model_name == "resnet50":
-        # Use the stronger torchvision V2 weights for a better pretrained starting point.
+        # Pin to V1 so the repo reuses the existing local cache instead of
+        # downloading the newer torchvision default V2 checkpoint.
         model = _load_model_with_weights(
             tv_models.resnet50,
             "ResNet50_Weights",
             pretrained,
-            weight_member="IMAGENET1K_V2",
+            weight_member="IMAGENET1K_V1",
         )
         features_dim = model.fc.in_features
         model.fc = nn.Identity()
