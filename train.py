@@ -181,7 +181,7 @@ def build_loss(cfg: ExperimentConfig, train_age_mean: float, train_age_std: floa
 
 def build_optimizer(cfg: ExperimentConfig, model: nn.Module) -> optim.Optimizer:
     if cfg.optimizer == "adamw":
-        return optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay, betas=(0.9, 0.98))
+        return optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay, betas=(0.9, 0.999))
     if cfg.optimizer == "sgd":
         return optim.SGD(
             model.parameters(),
