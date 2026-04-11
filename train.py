@@ -179,13 +179,26 @@ def build_loss(cfg: ExperimentConfig, train_age_mean: float, train_age_std: floa
 
 
 def build_optimizer(cfg: ExperimentConfig, model: nn.Module) -> optim.Optimizer:
+    decay_params = []
+    no_decay_params = []
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        if param.ndim == 1 or name.endswith(".bias"):
+            no_decay_params.append(param)
+        else:
+            decay_params.append(param)
+    param_groups = [
+        {"params": decay_params, "weight_decay": cfg.weight_decay},
+        {"params": no_decay_params, "weight_decay": 0.0},
+    ]
     if cfg.optimizer == "adamw":
-        return optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay, betas=(0.9, 0.999))
+        return optim.AdamW(param_groups, lr=cfg.lr, betas=(0.9, 0.999), weight_decay=0.0)
     if cfg.optimizer == "sgd":
         return optim.SGD(
-            model.parameters(),
+            param_groups,
             lr=cfg.lr,
-            weight_decay=cfg.weight_decay,
+            weight_decay=0.0,
             momentum=cfg.momentum,
         )
     raise ValueError(f"Unsupported optimizer: {cfg.optimizer}")
