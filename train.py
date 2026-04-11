@@ -57,7 +57,7 @@ class ExperimentConfig:
     aux_intensity: bool = True
     aux_clarity: bool = True
 
-    rotation_degrees: float = 10.0
+    rotation_degrees: float = 0.0
     horizontal_flip_prob: float = 0.0
     brightness_jitter: float = 0.2
     contrast_jitter: float = 0.2
