@@ -330,6 +330,8 @@ class AgeRegressor(nn.Module):
         )
 
     def forward(self, images: torch.Tensor, aux_features: torch.Tensor | None = None) -> torch.Tensor:
+        if self.training:
+            self.backbone.eval()
         image_features = self.backbone(images)
         if self.aux_branch is not None and aux_features is not None:
             aux_repr = self.aux_branch(aux_features)
