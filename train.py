@@ -66,6 +66,7 @@ class ExperimentConfig:
     hue_jitter: float = 0.0
 
     batch_size: int = 16
+    eval_batch_size: int = 64
     num_workers: int = 8
     epochs: int = 500
     patience: int = 100
@@ -509,7 +510,7 @@ def main() -> dict[str, object]:
     )
     val_loader = prepare.make_dataloader(
         val_dataset,
-        batch_size=cfg.batch_size,
+        batch_size=cfg.eval_batch_size,
         shuffle=False,
         num_workers=cfg.num_workers,
         seed=train_seed + 1,
@@ -670,7 +671,7 @@ def main() -> dict[str, object]:
         final_test_summary = evaluate.evaluate_checkpoint(
             best_checkpoint_path,
             split="test",
-            batch_size=cfg.batch_size,
+            batch_size=cfg.eval_batch_size,
             num_workers=cfg.num_workers,
             device_override=str(device),
             output_json=run_dir / "test_eval.json",
