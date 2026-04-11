@@ -45,7 +45,7 @@ class ExperimentConfig:
     val_size: float = 0.15
     age_bin_width: int = 10
 
-    model: str = "resnet50"
+    model: str = "convnext"
     pretrained: bool = True
     dropout: float = 0.4125
     aux_hidden_dim: int = 32
@@ -277,7 +277,7 @@ def build_backbone(model_name: str, pretrained: bool) -> tuple[nn.Module, int]:
         factory = getattr(tv_models, "convnext_tiny")
         model = _load_model_with_weights(factory, "ConvNeXt_Tiny_Weights", pretrained)
         features_dim = model.classifier[2].in_features
-        model.classifier = nn.Identity()
+        model.classifier = nn.Sequential(model.classifier[0], model.classifier[1])
         return model, features_dim
     if model_name == "mobilenet_v3":
         model = _load_model_with_weights(
