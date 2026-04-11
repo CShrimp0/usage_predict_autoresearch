@@ -59,8 +59,8 @@ class ExperimentConfig:
 
     rotation_degrees: float = 10.0
     horizontal_flip_prob: float = 0.0
-    brightness_jitter: float = 0.1
-    contrast_jitter: float = 0.1
+    brightness_jitter: float = 0.2
+    contrast_jitter: float = 0.2
     saturation_jitter: float = 0.0
     hue_jitter: float = 0.0
 
