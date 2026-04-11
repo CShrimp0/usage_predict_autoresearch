@@ -22,6 +22,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torchvision.models as tv_models
 from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau, StepLR
+from torch.utils.data import DataLoader
 
 import prepare
 
@@ -66,6 +67,7 @@ class ExperimentConfig:
 
     batch_size: int = 8
     num_workers: int = 8
+    persistent_workers: bool = True
     epochs: int = 500
     patience: int = 100
     lr: float = 3.893e-05
@@ -451,6 +453,29 @@ def env_flag(name: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
+def make_dataloader(
+    dataset,
+    *,
+    batch_size: int,
+    shuffle: bool,
+    num_workers: int,
+    seed: int,
+    persistent_workers: bool,
+) -> DataLoader:
+    generator = torch.Generator()
+    generator.manual_seed(seed)
+    return DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        num_workers=num_workers,
+        pin_memory=True,
+        worker_init_fn=prepare.seed_worker,
+        generator=generator,
+        persistent_workers=bool(persistent_workers) and int(num_workers) > 0,
+    )
+
+
 def main() -> dict[str, object]:
     args = create_arg_parser().parse_args()
     cfg = ExperimentConfig()
@@ -470,19 +495,21 @@ def main() -> dict[str, object]:
     use_aux = bool(metadata["use_aux_features"])
     aux_dim = int(metadata["aux_dim"])
 
-    train_loader = prepare.make_dataloader(
+    train_loader = make_dataloader(
         train_dataset,
         batch_size=cfg.batch_size,
         shuffle=True,
         num_workers=cfg.num_workers,
         seed=train_seed,
+        persistent_workers=cfg.persistent_workers,
     )
-    val_loader = prepare.make_dataloader(
+    val_loader = make_dataloader(
         val_dataset,
         batch_size=cfg.batch_size,
         shuffle=False,
         num_workers=cfg.num_workers,
         seed=train_seed + 1,
+        persistent_workers=cfg.persistent_workers,
     )
     model = AgeRegressor(cfg, aux_input_dim=aux_dim).to(device)
     criterion = build_loss(cfg, metadata["train_age_mean"], metadata["train_age_std"])
