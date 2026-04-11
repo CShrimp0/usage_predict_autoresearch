@@ -341,13 +341,6 @@ class AgeRegressor(nn.Module):
         return self.head(fused).squeeze(-1)
 
 
-def init_regression_bias(model: AgeRegressor, value: float) -> None:
-    last_layer = model.head[-1]
-    if isinstance(last_layer, nn.Linear) and last_layer.out_features == 1 and last_layer.bias is not None:
-        with torch.no_grad():
-            last_layer.bias.fill_(float(value))
-
-
 # ---------------------------------------------------------------------------
 # Train / validate loops
 # ---------------------------------------------------------------------------
@@ -492,7 +485,6 @@ def main() -> dict[str, object]:
         seed=train_seed + 1,
     )
     model = AgeRegressor(cfg, aux_input_dim=aux_dim).to(device)
-    init_regression_bias(model, metadata["train_age_mean"])
     criterion = build_loss(cfg, metadata["train_age_mean"], metadata["train_age_std"])
     optimizer = build_optimizer(cfg, model)
     scheduler = build_scheduler(cfg, optimizer)
