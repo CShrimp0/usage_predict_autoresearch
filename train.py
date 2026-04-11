@@ -64,6 +64,8 @@ class ExperimentConfig:
     saturation_jitter: float = 0.0
     hue_jitter: float = 0.0
 
+    mixup_alpha: float = 0.2
+
     batch_size: int = 8
     num_workers: int = 8
     epochs: int = 500
@@ -176,6 +178,29 @@ def build_loss(cfg: ExperimentConfig, train_age_mean: float, train_age_std: floa
             delta=cfg.huber_delta,
         )
     raise ValueError(f"Unsupported loss: {cfg.loss}")
+
+
+def apply_mixup(
+    images: torch.Tensor,
+    ages: torch.Tensor,
+    aux_features: torch.Tensor | None,
+    *,
+    alpha: float,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
+    alpha = float(alpha)
+    if alpha <= 0.0 or images.shape[0] < 2:
+        return images, ages, aux_features
+
+    lam = float(torch.distributions.Beta(alpha, alpha).sample().item())
+    index = torch.randperm(images.shape[0], device=images.device)
+    mixed_images = images.mul(lam).add(images[index], alpha=1.0 - lam)
+    mixed_ages = ages.mul(lam).add(ages[index], alpha=1.0 - lam)
+
+    mixed_aux = None
+    if aux_features is not None:
+        mixed_aux = aux_features.mul(lam).add(aux_features[index], alpha=1.0 - lam)
+
+    return mixed_images, mixed_ages, mixed_aux
 
 
 def build_optimizer(cfg: ExperimentConfig, model: nn.Module) -> optim.Optimizer:
@@ -376,7 +401,29 @@ def train_one_epoch(
     mae_meter = AverageMeter()
 
     for batch in data_loader:
-        outputs, ages = _forward(model, batch, device, use_aux)
+        if use_aux:
+            images, aux_features, ages = batch
+            images = images.to(device, non_blocking=True)
+            aux_features = aux_features.to(device, non_blocking=True)
+            ages = ages.to(device, non_blocking=True)
+            images, ages, aux_features = apply_mixup(
+                images,
+                ages,
+                aux_features,
+                alpha=cfg.mixup_alpha,
+            )
+            outputs = model(images, aux_features)
+        else:
+            images, ages = batch
+            images = images.to(device, non_blocking=True)
+            ages = ages.to(device, non_blocking=True)
+            images, ages, _ = apply_mixup(
+                images,
+                ages,
+                None,
+                alpha=cfg.mixup_alpha,
+            )
+            outputs = model(images)
         loss = criterion(outputs, ages)
         mae = torch.abs(outputs - ages).mean()
 
