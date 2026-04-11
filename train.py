@@ -297,11 +297,28 @@ def build_backbone(model_name: str, pretrained: bool) -> tuple[nn.Module, int]:
     raise ValueError(f"Unsupported model: {model_name}")
 
 
+def replace_batchnorm2d_with_groupnorm(module: nn.Module, *, num_groups: int = 32) -> None:
+    for name, child in module.named_children():
+        if isinstance(child, nn.BatchNorm2d):
+            num_channels = int(child.num_features)
+            groups = min(int(num_groups), num_channels)
+            while groups > 1 and num_channels % groups != 0:
+                groups -= 1
+            group_norm = nn.GroupNorm(groups, num_channels, eps=float(child.eps), affine=True)
+            with torch.no_grad():
+                group_norm.weight.copy_(child.weight)
+                group_norm.bias.copy_(child.bias)
+            setattr(module, name, group_norm)
+        else:
+            replace_batchnorm2d_with_groupnorm(child, num_groups=num_groups)
+
+
 class AgeRegressor(nn.Module):
     def __init__(self, cfg: ExperimentConfig, aux_input_dim: int) -> None:
         super().__init__()
         self.aux_input_dim = aux_input_dim
         self.backbone, image_feature_dim = build_backbone(cfg.model, cfg.pretrained)
+        replace_batchnorm2d_with_groupnorm(self.backbone, num_groups=32)
 
         if aux_input_dim > 0:
             self.aux_branch = nn.Sequential(
