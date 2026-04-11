@@ -60,6 +60,7 @@ Constraints:
 - Start from the true golden baseline if the code is not aligned yet
 - Prefer small, interpretable, controlled edits
 - Limit routine mutations to at most two numeric hyperparameter changes or one structural idea per run
+- If the current direction stalls for several runs, pivot to a different well-motivated direction instead of repeating near-identical variants
 - Assume 48 GB VRAM is available, but do not optimize for memory usage itself
 - Use `conda activate us` semantics implicitly by invoking `/home/szdx/anaconda3/envs/us/bin/python`
 - Run experiments as `CUDA_VISIBLE_DEVICES=0 /home/szdx/anaconda3/envs/us/bin/python train.py > run.log 2>&1`
@@ -67,6 +68,7 @@ Constraints:
 - Append experiment outcomes to `results_v2.tsv` without committing that file
 - If a run crashes, read the last 80 lines of `run.log` and fix that exact crash before trying a new idea
 - Do not introduce any new third-party dependencies
+- Write `mutation_type` values in full words such as `Architecture`, `Optimization`, `Regularization`, `Loss`, or `Data`
 - When appending to `results_v2.tsv`, write a single raw TSV line with no Markdown fences
 - Keep simple robust improvements; reject noisy tiny gains unless they are confirmed
 

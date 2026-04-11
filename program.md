@@ -171,6 +171,10 @@ Repeated-seed confirmation for small structural gains.
 
 Only then consider larger structural departures.
 
+If the current direction produces several consecutive discards and you no longer have a precise new hypothesis inside that family:
+- pivot to a different well-motivated direction
+- do not keep repeating near-identical variants just because they are nearby
+
 Note: Do not waste excessive runs on pure numerical hyperparameter tuning; the golden anchor is already near optimal numerically.
 
 ### 5. Stability Rule
@@ -228,7 +232,7 @@ Append new records with this exact header:
 - `best_val_mae`: The primary validation metric.
 - `test_mae`: Optional held-out test confirmation metric for shortlisted candidates. Leave it empty for routine validation-only runs.
 - `status`: `keep`, `candidate`, `discard`, or `crash`.
-- `mutation_type`: Categorize your change (`Arch`, `Loss`, `Optim`, `Reg`, `Data`).
+- `mutation_type`: Categorize your change with full words (`Architecture`, `Loss`, `Optimization`, `Regularization`, `Data`).
 - `action`: What exact structural or numeric change did you make? (e.g., "Added CBAM after layer4", "Lowered base LR to 1e-5").
 - `insight`: **(Crucial)** Why did it succeed or fail? What is the takeaway for future runs? (e.g., "Crash: tensor shape mismatch in fusion head" or "Discard: validation degraded by 15%, CBAM without extra dropout causes immediate overfitting").
 
@@ -245,7 +249,7 @@ Never wrap TSV output in Markdown fences.
 Loop carefully using the Scientific Method:
 
 1. **Analyze:** Read `results_v2.tsv` to understand past failures and successes (the `insight` column is your guide).
-2. **Hypothesize:** Based on the insights, decide on ONE logical mutation (Arch, Loss, Optim, etc.).
+2. **Hypothesize:** Based on the insights, decide on ONE logical mutation (`Architecture`, `Loss`, `Optimization`, `Regularization`, or `Data`).
 3. **Execute:** Edit `train.py` to implement the mutation.
 4. **Commit:** Commit the change.
 5. **Train:** Run the validation-only training command.
