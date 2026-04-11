@@ -49,6 +49,7 @@ class ExperimentConfig:
     pretrained: bool = True
     dropout: float = 0.4125
     aux_hidden_dim: int = 32
+    bn_momentum: float = 0.01
 
     use_aux_features: bool = True
     aux_gender: bool = True
@@ -328,6 +329,12 @@ class AgeRegressor(nn.Module):
             nn.Dropout(cfg.dropout * 0.5),
             nn.Linear(128, 1),
         )
+        self._set_batchnorm_momentum(float(cfg.bn_momentum))
+
+    def _set_batchnorm_momentum(self, momentum: float) -> None:
+        for module in self.modules():
+            if isinstance(module, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):
+                module.momentum = momentum
 
     def forward(self, images: torch.Tensor, aux_features: torch.Tensor | None = None) -> torch.Tensor:
         image_features = self.backbone(images)
