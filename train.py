@@ -45,7 +45,7 @@ class ExperimentConfig:
     val_size: float = 0.15
     age_bin_width: int = 10
 
-    model: str = "resnet50"
+    model: str = "efficientnet_b0"
     pretrained: bool = True
     dropout: float = 0.4125
     aux_hidden_dim: int = 32
