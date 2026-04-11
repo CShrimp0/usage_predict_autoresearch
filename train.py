@@ -69,7 +69,7 @@ class ExperimentConfig:
     num_workers: int = 8
     epochs: int = 500
     patience: int = 100
-    lr: float = 4.5e-05
+    lr: float = 3.893e-05
     weight_decay: float = 4.914e-05
     optimizer: str = "adamw"
     momentum: float = 0.9
