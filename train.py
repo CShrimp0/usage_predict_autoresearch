@@ -65,7 +65,7 @@ class ExperimentConfig:
     saturation_jitter: float = 0.0
     hue_jitter: float = 0.0
 
-    batch_size: int = 16
+    batch_size: int = 24
     num_workers: int = 8
     epochs: int = 500
     patience: int = 100
