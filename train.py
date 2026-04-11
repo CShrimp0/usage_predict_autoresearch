@@ -312,9 +312,11 @@ class AgeRegressor(nn.Module):
                 nn.BatchNorm1d(cfg.aux_hidden_dim),
                 nn.ReLU(inplace=True),
             )
+            self.image_film = nn.Linear(cfg.aux_hidden_dim, image_feature_dim * 2)
             fused_dim = image_feature_dim + cfg.aux_hidden_dim
         else:
             self.aux_branch = None
+            self.image_film = None
             fused_dim = image_feature_dim
 
         self.head = nn.Sequential(
@@ -331,6 +333,8 @@ class AgeRegressor(nn.Module):
         image_features = self.backbone(images)
         if self.aux_branch is not None and aux_features is not None:
             aux_repr = self.aux_branch(aux_features)
+            gamma, beta = self.image_film(aux_repr).chunk(2, dim=1)
+            image_features = image_features * (1.0 + 0.1 * torch.tanh(gamma)) + 0.1 * beta
             fused = torch.cat([image_features, aux_repr], dim=1)
         else:
             fused = image_features
