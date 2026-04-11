@@ -38,7 +38,7 @@ class ExperimentConfig:
 
     seed: int = 42
     deterministic: bool = False
-    image_size: int = 192
+    image_size: int = 176
     min_age: float = 18.0
     max_age: float = 100.0
     test_size: float = 0.15
