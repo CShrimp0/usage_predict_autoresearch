@@ -328,7 +328,6 @@ class AgeRegressor(nn.Module):
             nn.Dropout(cfg.dropout * 0.5),
             nn.Linear(128, 1),
         )
-        self.linear_skip = nn.Linear(fused_dim, 1)
 
     def forward(self, images: torch.Tensor, aux_features: torch.Tensor | None = None) -> torch.Tensor:
         image_features = self.backbone(images)
@@ -339,7 +338,7 @@ class AgeRegressor(nn.Module):
             fused = torch.cat([image_features, aux_repr], dim=1)
         else:
             fused = image_features
-        return (self.head(fused) + self.linear_skip(fused)).squeeze(-1)
+        return self.head(fused).squeeze(-1)
 
 
 # ---------------------------------------------------------------------------
