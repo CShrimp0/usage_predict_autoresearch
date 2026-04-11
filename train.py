@@ -82,7 +82,7 @@ class ExperimentConfig:
     warmup_epochs: int = 5
     max_grad_norm: float = 1.0
 
-    loss: str = "mae"
+    loss: str = "rtm_huber"
     huber_delta: float = 1.0
     lambda_rtm: float = 0.1
     use_ema: bool = True
