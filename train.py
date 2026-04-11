@@ -21,7 +21,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torchvision.models as tv_models
-from torch.cuda.amp import GradScaler, autocast
 from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau, StepLR
 
 import prepare
@@ -88,7 +87,6 @@ class ExperimentConfig:
     lambda_rtm: float = 0.1
     use_ema: bool = True
     ema_decay: float = 0.997
-    use_amp: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -372,32 +370,20 @@ def train_one_epoch(
     *,
     use_aux: bool,
     ema: ExponentialMovingAverage | None,
-    amp_enabled: bool,
-    scaler: GradScaler | None,
 ) -> tuple[float, float]:
     model.train()
     loss_meter = AverageMeter()
     mae_meter = AverageMeter()
 
     for batch in data_loader:
+        outputs, ages = _forward(model, batch, device, use_aux)
+        loss = criterion(outputs, ages)
+        mae = torch.abs(outputs - ages).mean()
+
         optimizer.zero_grad(set_to_none=True)
-        with autocast(enabled=amp_enabled):
-            outputs, ages = _forward(model, batch, device, use_aux)
-            loss = criterion(outputs, ages)
-
-        mae = torch.abs(outputs.detach().float() - ages.float()).mean()
-
-        if amp_enabled and scaler is not None:
-            scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.max_grad_norm)
-            scaler.step(optimizer)
-            scaler.update()
-        else:
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.max_grad_norm)
-            optimizer.step()
-
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.max_grad_norm)
+        optimizer.step()
         if ema is not None:
             ema.update(model)
 
@@ -416,7 +402,6 @@ def validate(
     device: torch.device,
     *,
     use_aux: bool,
-    amp_enabled: bool,
 ) -> tuple[float, float, float]:
     model.eval()
     loss_meter = AverageMeter()
@@ -425,15 +410,14 @@ def validate(
     targets = []
 
     for batch in data_loader:
-        with autocast(enabled=amp_enabled):
-            outputs, ages = _forward(model, batch, device, use_aux)
-            loss = criterion(outputs, ages)
-        mae = torch.abs(outputs.detach().float() - ages.float()).mean()
+        outputs, ages = _forward(model, batch, device, use_aux)
+        loss = criterion(outputs, ages)
+        mae = torch.abs(outputs - ages).mean()
 
         batch_size = ages.shape[0]
         loss_meter.update(loss.item(), batch_size)
         mae_meter.update(mae.item(), batch_size)
-        predictions.append(outputs.detach().float().cpu())
+        predictions.append(outputs.detach().cpu())
         targets.append(ages.detach().cpu())
 
     preds = torch.cat(predictions).numpy()
@@ -505,8 +489,6 @@ def main() -> dict[str, object]:
     optimizer = build_optimizer(cfg, model)
     scheduler = build_scheduler(cfg, optimizer)
     ema = ExponentialMovingAverage(model, cfg.ema_decay) if cfg.use_ema else None
-    amp_enabled = bool(cfg.use_amp and device.type == "cuda")
-    scaler = GradScaler(enabled=amp_enabled)
 
     history = {
         "train_loss": [],
@@ -556,8 +538,6 @@ def main() -> dict[str, object]:
             cfg,
             use_aux=use_aux,
             ema=ema,
-            amp_enabled=amp_enabled,
-            scaler=scaler,
         )
 
         if ema is not None:
@@ -568,7 +548,6 @@ def main() -> dict[str, object]:
             criterion,
             device,
             use_aux=use_aux,
-            amp_enabled=amp_enabled,
         )
         if ema is not None:
             ema.restore(model)
