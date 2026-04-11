@@ -38,7 +38,7 @@ class ExperimentConfig:
 
     seed: int = 42
     deterministic: bool = False
-    image_size: int = 176
+    image_size: int = 224
     min_age: float = 18.0
     max_age: float = 100.0
     test_size: float = 0.15
@@ -49,7 +49,6 @@ class ExperimentConfig:
     pretrained: bool = True
     dropout: float = 0.4125
     aux_hidden_dim: int = 32
-    bn_momentum: float = 0.01
 
     use_aux_features: bool = True
     aux_gender: bool = True
@@ -65,7 +64,7 @@ class ExperimentConfig:
     saturation_jitter: float = 0.0
     hue_jitter: float = 0.0
 
-    batch_size: int = 16
+    batch_size: int = 8
     num_workers: int = 8
     epochs: int = 500
     patience: int = 100
@@ -87,8 +86,7 @@ class ExperimentConfig:
     huber_delta: float = 1.0
     lambda_rtm: float = 0.1
     use_ema: bool = True
-    ema_decay: float = 0.997
-    use_amp: bool = True
+    ema_decay: float = 0.999
 
 
 # ---------------------------------------------------------------------------
@@ -314,11 +312,9 @@ class AgeRegressor(nn.Module):
                 nn.BatchNorm1d(cfg.aux_hidden_dim),
                 nn.ReLU(inplace=True),
             )
-            self.image_film = nn.Linear(cfg.aux_hidden_dim, image_feature_dim * 2)
             fused_dim = image_feature_dim + cfg.aux_hidden_dim
         else:
             self.aux_branch = None
-            self.image_film = None
             fused_dim = image_feature_dim
 
         self.head = nn.Sequential(
@@ -330,19 +326,11 @@ class AgeRegressor(nn.Module):
             nn.Dropout(cfg.dropout * 0.5),
             nn.Linear(128, 1),
         )
-        self._set_batchnorm_momentum(float(cfg.bn_momentum))
-
-    def _set_batchnorm_momentum(self, momentum: float) -> None:
-        for module in self.modules():
-            if isinstance(module, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):
-                module.momentum = momentum
 
     def forward(self, images: torch.Tensor, aux_features: torch.Tensor | None = None) -> torch.Tensor:
         image_features = self.backbone(images)
         if self.aux_branch is not None and aux_features is not None:
             aux_repr = self.aux_branch(aux_features)
-            gamma, beta = self.image_film(aux_repr).chunk(2, dim=1)
-            image_features = image_features * (1.0 + 0.1 * torch.tanh(gamma)) + 0.1 * beta
             fused = torch.cat([image_features, aux_repr], dim=1)
         else:
             fused = image_features
@@ -373,12 +361,10 @@ def train_one_epoch(
     data_loader,
     criterion: nn.Module,
     optimizer: optim.Optimizer,
-    scaler,
     device: torch.device,
     cfg: ExperimentConfig,
     *,
     use_aux: bool,
-    use_amp: bool,
     ema: ExponentialMovingAverage | None,
 ) -> tuple[float, float]:
     model.train()
@@ -386,26 +372,14 @@ def train_one_epoch(
     mae_meter = AverageMeter()
 
     for batch in data_loader:
+        outputs, ages = _forward(model, batch, device, use_aux)
+        loss = criterion(outputs, ages)
+        mae = torch.abs(outputs - ages).mean()
+
         optimizer.zero_grad(set_to_none=True)
-        if use_amp:
-            with torch.autocast(device_type=device.type, dtype=torch.float16):
-                outputs, ages = _forward(model, batch, device, use_aux)
-                loss = criterion(outputs, ages)
-            mae = torch.abs(outputs.float() - ages.float()).mean()
-
-            scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.max_grad_norm)
-            scaler.step(optimizer)
-            scaler.update()
-        else:
-            outputs, ages = _forward(model, batch, device, use_aux)
-            loss = criterion(outputs, ages)
-            mae = torch.abs(outputs - ages).mean()
-
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.max_grad_norm)
-            optimizer.step()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.max_grad_norm)
+        optimizer.step()
         if ema is not None:
             ema.update(model)
 
@@ -424,7 +398,6 @@ def validate(
     device: torch.device,
     *,
     use_aux: bool,
-    use_amp: bool,
 ) -> tuple[float, float, float]:
     model.eval()
     loss_meter = AverageMeter()
@@ -433,20 +406,15 @@ def validate(
     targets = []
 
     for batch in data_loader:
-        if use_amp:
-            with torch.autocast(device_type=device.type, dtype=torch.float16):
-                outputs, ages = _forward(model, batch, device, use_aux)
-                loss = criterion(outputs, ages)
-        else:
-            outputs, ages = _forward(model, batch, device, use_aux)
-            loss = criterion(outputs, ages)
-        mae = torch.abs(outputs.float() - ages.float()).mean()
+        outputs, ages = _forward(model, batch, device, use_aux)
+        loss = criterion(outputs, ages)
+        mae = torch.abs(outputs - ages).mean()
 
         batch_size = ages.shape[0]
         loss_meter.update(loss.item(), batch_size)
         mae_meter.update(mae.item(), batch_size)
-        predictions.append(outputs.detach().float().cpu())
-        targets.append(ages.detach().float().cpu())
+        predictions.append(outputs.detach().cpu())
+        targets.append(ages.detach().cpu())
 
     preds = torch.cat(predictions).numpy()
     gold = torch.cat(targets).numpy()
@@ -487,8 +455,6 @@ def main() -> dict[str, object]:
     prepare.ensure_data_exists(cfg.image_dir, cfg.excel_path)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    amp_enabled = bool(cfg.use_amp) and device.type == "cuda"
-    scaler = torch.cuda.amp.GradScaler(enabled=amp_enabled)
     run_dir = prepare.make_run_dir(cfg.output_root)
     prepare.save_json(run_dir / "config.json", asdict(cfg))
 
@@ -564,11 +530,9 @@ def main() -> dict[str, object]:
             train_loader,
             criterion,
             optimizer,
-            scaler,
             device,
             cfg,
             use_aux=use_aux,
-            use_amp=amp_enabled,
             ema=ema,
         )
 
@@ -580,7 +544,6 @@ def main() -> dict[str, object]:
             criterion,
             device,
             use_aux=use_aux,
-            use_amp=amp_enabled,
         )
         if ema is not None:
             ema.restore(model)
