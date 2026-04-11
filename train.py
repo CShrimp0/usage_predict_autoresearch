@@ -334,7 +334,6 @@ class AgeRegressor(nn.Module):
         if self.aux_branch is not None and aux_features is not None:
             aux_repr = self.aux_branch(aux_features)
             gamma, beta = self.image_film(aux_repr).chunk(2, dim=1)
-            beta = 3.0 * torch.tanh(beta / 3.0)
             image_features = image_features * (1.0 + 0.1 * torch.tanh(gamma)) + 0.1 * beta
             fused = torch.cat([image_features, aux_repr], dim=1)
         else:
