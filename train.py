@@ -305,11 +305,11 @@ class AgeRegressor(nn.Module):
         if aux_input_dim > 0:
             self.aux_branch = nn.Sequential(
                 nn.Linear(aux_input_dim, cfg.aux_hidden_dim),
-                nn.BatchNorm1d(cfg.aux_hidden_dim),
+                nn.LayerNorm(cfg.aux_hidden_dim),
                 nn.ReLU(inplace=True),
                 nn.Dropout(cfg.dropout * 0.6),
                 nn.Linear(cfg.aux_hidden_dim, cfg.aux_hidden_dim),
-                nn.BatchNorm1d(cfg.aux_hidden_dim),
+                nn.LayerNorm(cfg.aux_hidden_dim),
                 nn.ReLU(inplace=True),
             )
             self.image_film = nn.Linear(cfg.aux_hidden_dim, image_feature_dim * 2)
