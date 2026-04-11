@@ -261,10 +261,8 @@ def build_backbone(model_name: str, pretrained: bool) -> tuple[nn.Module, int]:
             weight_member="IMAGENET1K_V1",
         )
         features_dim = model.fc.in_features
-        # Return the spatial feature map from layer4 so FiLM conditioning can
-        # act before global pooling.
-        backbone = nn.Sequential(*list(model.children())[:-2])
-        return backbone, features_dim
+        model.fc = nn.Identity()
+        return model, features_dim
     if model_name == "efficientnet_b0":
         model = _load_model_with_weights(tv_models.efficientnet_b0, "EfficientNet_B0_Weights", pretrained)
         features_dim = model.classifier[1].in_features
@@ -333,20 +331,12 @@ class AgeRegressor(nn.Module):
 
     def forward(self, images: torch.Tensor, aux_features: torch.Tensor | None = None) -> torch.Tensor:
         image_features = self.backbone(images)
-        spatial_features = image_features.ndim == 4
         if self.aux_branch is not None and aux_features is not None:
             aux_repr = self.aux_branch(aux_features)
             gamma, beta = self.image_film(aux_repr).chunk(2, dim=1)
-            if spatial_features:
-                gamma = gamma.unsqueeze(-1).unsqueeze(-1)
-                beta = beta.unsqueeze(-1).unsqueeze(-1)
             image_features = image_features * (1.0 + 0.1 * torch.tanh(gamma)) + 0.1 * beta
-            if spatial_features:
-                image_features = image_features.mean(dim=(2, 3))
             fused = torch.cat([image_features, aux_repr], dim=1)
         else:
-            if spatial_features:
-                image_features = image_features.mean(dim=(2, 3))
             fused = image_features
         return self.head(fused).squeeze(-1)
 
