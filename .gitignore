@@ -13,6 +13,7 @@ env/
 
 outputs/
 run.log
+autoresearch_supervisor.log
 results.tsv
 results_v2.tsv
 
