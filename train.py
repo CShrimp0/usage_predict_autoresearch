@@ -320,7 +320,6 @@ class AgeRegressor(nn.Module):
             self.image_film = None
             fused_dim = image_feature_dim
 
-        self.fused_bn = nn.BatchNorm1d(fused_dim)
         self.head = nn.Sequential(
             nn.Linear(fused_dim, 256),
             nn.ReLU(inplace=True),
@@ -346,7 +345,6 @@ class AgeRegressor(nn.Module):
             fused = torch.cat([image_features, aux_repr], dim=1)
         else:
             fused = image_features
-        fused = self.fused_bn(fused)
         return self.head(fused).squeeze(-1)
 
 
