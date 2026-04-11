@@ -48,7 +48,7 @@ class ExperimentConfig:
     model: str = "resnet50"
     pretrained: bool = True
     dropout: float = 0.4125
-    aux_hidden_dim: int = 24
+    aux_hidden_dim: int = 32
 
     use_aux_features: bool = True
     aux_gender: bool = True
