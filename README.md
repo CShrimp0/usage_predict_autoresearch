@@ -8,6 +8,11 @@
 - `train.py`
 - `program.md`
 
+另外保留两个固定辅助文件：
+
+- `evaluate.py`
+- `usfm_adapter.py`
+
 ## 设计原则
 
 - `prepare.py` 是固定实验框架
@@ -23,6 +28,7 @@
 - `program.md` 定义 autoresearch 的运行规则
 
 另外保留一个固定的 `evaluate.py`，用于对候选 checkpoint 做显式最终测试评估。
+如果需要测试或后续 autoresearch USFM，也已经接入了与原始 `usage_predict` 一致的最小 `USFM` encoder adapter。
 
 ## 数据路径
 
@@ -69,6 +75,31 @@ conda activate us
 python evaluate.py --checkpoint outputs/autoresearch/run_xxx/best_model.pth
 ```
 
+运行 USFM 单模态：
+
+```bash
+cd /home/szdx/LNX/usage_predict_autoresearch
+conda activate us
+CUDA_VISIBLE_DEVICES=0 python train.py \
+  --model usfm \
+  --pretrained-path /home/szdx/LNX/usage_predict/pretrained/USFM_latest.pth \
+  --freeze-backbone \
+  --disable-aux-features \
+  > run.log 2>&1
+```
+
+运行 USFM + 辅助特征 late fusion：
+
+```bash
+cd /home/szdx/LNX/usage_predict_autoresearch
+conda activate us
+CUDA_VISIBLE_DEVICES=0 python train.py \
+  --model usfm \
+  --pretrained-path /home/szdx/LNX/usage_predict/pretrained/USFM_latest.pth \
+  --freeze-backbone \
+  > run.log 2>&1
+```
+
 输出会写到：
 
 - `outputs/autoresearch/run_*/best_model.pth`
@@ -83,6 +114,9 @@ python evaluate.py --checkpoint outputs/autoresearch/run_xxx/best_model.pth
 
 - `model = "resnet50"`
 - `pretrained = True`
+- `pretrained_path = "/home/szdx/LNX/usage_predict/pretrained/USFM_latest.pth"`（仅 `model="usfm"` 时使用）
+- `freeze_backbone = False`
+- `usfm_global_pool = "auto"`
 - `batch_size = 8`
 - `optimizer = "adamw"`
 - `lr = 3.893e-05`

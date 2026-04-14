@@ -12,6 +12,7 @@ search-time ranking.
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 from dataclasses import fields
 from pathlib import Path
 
@@ -67,7 +68,8 @@ def evaluate_checkpoint(
     device = torch.device(device_override) if device_override else torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data_loader, metadata, sample_count = _build_data_loader(cfg, split, batch_size, num_workers)
 
-    model = train.AgeRegressor(cfg, aux_input_dim=int(metadata["aux_dim"]))
+    model_cfg = replace(cfg, pretrained_path=None)
+    model = train.AgeRegressor(model_cfg, aux_input_dim=int(metadata["aux_dim"]))
     model.load_state_dict(checkpoint["model_state_dict"])
     model = model.to(device)
 

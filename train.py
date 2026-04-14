@@ -24,6 +24,12 @@ import torchvision.models as tv_models
 from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau, StepLR
 
 import prepare
+from usfm_adapter import USFMEncoderAdapter
+
+
+DEFAULT_USFM_PRETRAINED_PATH = Path("/home/szdx/LNX/usage_predict/pretrained/USFM_latest.pth")
+if not DEFAULT_USFM_PRETRAINED_PATH.exists():
+    DEFAULT_USFM_PRETRAINED_PATH = None
 
 
 # ---------------------------------------------------------------------------
@@ -47,6 +53,9 @@ class ExperimentConfig:
 
     model: str = "resnet50"
     pretrained: bool = True
+    pretrained_path: str | None = None if DEFAULT_USFM_PRETRAINED_PATH is None else str(DEFAULT_USFM_PRETRAINED_PATH)
+    freeze_backbone: bool = False
+    usfm_global_pool: str = "auto"
     dropout: float = 0.4125
     aux_hidden_dim: int = 32
 
@@ -246,11 +255,18 @@ def _load_model_with_weights(factory, weights_enum_name: str, pretrained: bool, 
     return factory(pretrained=pretrained)
 
 
+def _freeze_module(module: nn.Module) -> None:
+    for param in module.parameters():
+        param.requires_grad = False
+
+
 # ---------------------------------------------------------------------------
 # Model definitions
 # ---------------------------------------------------------------------------
 
-def build_backbone(model_name: str, pretrained: bool) -> tuple[nn.Module, int]:
+def build_backbone(cfg: ExperimentConfig) -> tuple[nn.Module, int]:
+    model_name = cfg.model
+    pretrained = cfg.pretrained
     if model_name == "resnet50":
         # Pin to V1 so the repo reuses the existing local cache instead of
         # downloading the newer torchvision default V2 checkpoint.
@@ -293,6 +309,20 @@ def build_backbone(model_name: str, pretrained: bool) -> tuple[nn.Module, int]:
         features_dim = model.fc.in_features
         model.fc = nn.Identity()
         return model, features_dim
+    if model_name == "usfm":
+        pretrained_path = None
+        if cfg.pretrained_path:
+            pretrained_path = Path(cfg.pretrained_path)
+            if not pretrained_path.exists():
+                raise FileNotFoundError(f"USFM checkpoint not found: {pretrained_path}")
+        model = USFMEncoderAdapter(
+            image_size=cfg.image_size,
+            pretrained_path=None if pretrained_path is None else str(pretrained_path),
+            global_pool=cfg.usfm_global_pool,
+        )
+        if cfg.freeze_backbone:
+            _freeze_module(model)
+        return model, int(model.feature_dim)
     raise ValueError(f"Unsupported model: {model_name}")
 
 
@@ -300,7 +330,7 @@ class AgeRegressor(nn.Module):
     def __init__(self, cfg: ExperimentConfig, aux_input_dim: int) -> None:
         super().__init__()
         self.aux_input_dim = aux_input_dim
-        self.backbone, image_feature_dim = build_backbone(cfg.model, cfg.pretrained)
+        self.backbone, image_feature_dim = build_backbone(cfg)
 
         if aux_input_dim > 0:
             self.aux_branch = nn.Sequential(
@@ -439,6 +469,36 @@ def create_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="Override the default seed for confirmation reruns.",
     )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        choices=["resnet50", "efficientnet_b0", "efficientnet_b1", "convnext", "mobilenet_v3", "regnet", "usfm"],
+        help="Override the default backbone for this run.",
+    )
+    parser.add_argument(
+        "--pretrained-path",
+        type=str,
+        default=None,
+        help="USFM pretrained checkpoint path. Only used when --model usfm.",
+    )
+    parser.add_argument(
+        "--freeze-backbone",
+        action="store_true",
+        help="Freeze the image backbone parameters. Primarily useful for USFM.",
+    )
+    parser.add_argument(
+        "--usfm-global-pool",
+        type=str,
+        default=None,
+        choices=["auto", "avg", "token"],
+        help="USFM feature pooling mode.",
+    )
+    parser.add_argument(
+        "--disable-aux-features",
+        action="store_true",
+        help="Run the image-only path by disabling auxiliary features for this run.",
+    )
     return parser
 
 
@@ -447,9 +507,23 @@ def env_flag(name: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
+def apply_arg_overrides(cfg: ExperimentConfig, args: argparse.Namespace) -> ExperimentConfig:
+    if args.model is not None:
+        cfg.model = args.model
+    if args.pretrained_path is not None:
+        cfg.pretrained_path = args.pretrained_path
+    if args.freeze_backbone:
+        cfg.freeze_backbone = True
+    if args.usfm_global_pool is not None:
+        cfg.usfm_global_pool = args.usfm_global_pool
+    if args.disable_aux_features:
+        cfg.use_aux_features = False
+    return cfg
+
+
 def main() -> dict[str, object]:
     args = create_arg_parser().parse_args()
-    cfg = ExperimentConfig()
+    cfg = apply_arg_overrides(ExperimentConfig(), args)
     train_seed = cfg.seed if args.seed is None else int(args.seed)
     final_eval_enabled = bool(args.final_eval or env_flag("RUN_FINAL_EVAL"))
     prepare.ensure_data_exists(cfg.image_dir, cfg.excel_path)
@@ -503,6 +577,13 @@ def main() -> dict[str, object]:
     print(f"device:            {device}")
     print(f"output_dir:        {run_dir}")
     print(f"run_mode:          {'final_eval' if final_eval_enabled else 'validation_only'}")
+    print(f"model:             {cfg.model}")
+    if cfg.model == "usfm":
+        print(f"pretrained_path:   {cfg.pretrained_path}")
+        print(f"freeze_backbone:   {cfg.freeze_backbone}")
+        print(f"usfm_global_pool:  {cfg.usfm_global_pool}")
+        if cfg.pretrained_path is None:
+            print("usfm_init:         checkpoint-only or random-init backbone")
     print(f"split_seed:        {cfg.seed}")
     print(f"train_seed:        {train_seed}")
     print(f"use_aux_features:  {use_aux}")
