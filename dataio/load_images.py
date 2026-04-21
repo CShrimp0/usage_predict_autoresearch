@@ -53,6 +53,8 @@ def apply_mask(image: np.ndarray, mask: np.ndarray | None) -> np.ndarray:
 
 def maybe_resize(config: dict[str, Any]) -> tuple[int, int] | None:
     """Read resize configuration."""
+    if bool(config.get("use_original_size", False)):
+        return None
     resize = config.get("resize")
     if resize in (None, False):
         return None

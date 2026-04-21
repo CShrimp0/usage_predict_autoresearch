@@ -30,6 +30,7 @@ from _common import base_argument_parser, initialize_run, load_runtime_config
 from utils.feature_extraction import extract_feature_table
 from utils.modeling import build_pipeline_and_search, extract_best_params, unwrap_best_estimator
 from utils.parallel import threading_backend_context
+from utils.run_log import append_run_log
 from utils.seeds import set_random_seed
 
 
@@ -149,6 +150,7 @@ def main() -> None:
         feature_importance=feature_importance,
         selected_features=selected_features,
         split_info=split_info,
+        raw_feature_columns=raw_feature_columns,
         age_bin_metrics=age_bin_metrics,
         subgroup_metrics=subgroup_metrics,
     )
@@ -198,6 +200,15 @@ def main() -> None:
         shap_top=shap_top,
     )
     save_run_summary(summary, run_dir / "run_summary.md")
+    append_run_log(
+        run_dir=run_dir,
+        config=config,
+        mode="holdout",
+        primary_metrics=test_metrics,
+        raw_feature_count=len(raw_feature_columns),
+        selected_feature_count=len(selected_features),
+        validation_metrics=val_metrics,
+    )
     logger.info("Experiment finished. Outputs written to %s", run_dir)
 
 

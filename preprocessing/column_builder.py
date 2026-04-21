@@ -40,7 +40,13 @@ def build_column_spec(df: pd.DataFrame, config: dict) -> ColumnSpec:
     group_column = "subject_id"
 
     reserved = set(CORE_COLUMNS)
-    image_features = sorted([column for column in df.columns if "__" in column and column not in reserved])
+    image_features = sorted(
+        [
+            column
+            for column in df.columns
+            if "__" in column and column not in reserved and not df[column].isna().all()
+        ]
+    )
 
     metadata_config = data_config.get("model_metadata_columns", {}) or {}
     numeric_metadata = [col for col in metadata_config.get("numeric", []) if col in df.columns]

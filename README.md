@@ -161,6 +161,20 @@ data:
 
 默认会过滤到 `18-100` 岁；如需调整，修改 `data.age_filter`。
 
+图像尺寸默认会按 `image.preprocessing.resize` 统一缩放到 `256x256`。如需直接使用原始尺寸，可设置：
+
+```yaml
+image:
+  preprocessing:
+    use_original_size: true
+```
+
+也可以在命令行追加：
+
+```bash
+--override image.preprocessing.use_original_size=true
+```
+
 ## 最小可运行示例
 
 ### 1. 只做特征提取

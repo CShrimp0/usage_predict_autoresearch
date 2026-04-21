@@ -15,11 +15,15 @@ def load_ta_healthy_dataframe(config: dict) -> pd.DataFrame:
     data_config = config["data"]
     metadata_path = Path(data_config["metadata_path"])
     image_root = Path(data_config["image_root"])
+    mask_root_value = data_config.get("mask_root")
+    mask_root = Path(mask_root_value) if mask_root_value not in (None, "", "null", "None") else None
 
     if not metadata_path.exists():
         raise FileNotFoundError(f"TA metadata file not found: {metadata_path}")
     if not image_root.exists():
         raise FileNotFoundError(f"TA image directory not found: {image_root}")
+    if mask_root is not None and not mask_root.exists():
+        raise FileNotFoundError(f"TA mask directory not found: {mask_root}")
 
     raw = pd.read_excel(metadata_path, header=None)
     healthy = raw.iloc[2:, 0:5].copy()
@@ -46,6 +50,11 @@ def load_ta_healthy_dataframe(config: dict) -> pd.DataFrame:
             continue
 
         for image_path in matched_images:
+            mask_path = None
+            if mask_root is not None:
+                candidate = mask_root / image_path.name
+                if candidate.exists():
+                    mask_path = str(candidate.resolve())
             rows.append(
                 {
                     "sample_id": image_path.stem,
@@ -59,8 +68,8 @@ def load_ta_healthy_dataframe(config: dict) -> pd.DataFrame:
                     "ta_number": subject_number,
                     "cohort": "healthy",
                     "split": None,
-                    "mask_path": None,
-                    "roi_path": None,
+                    "mask_path": mask_path,
+                    "roi_path": mask_path,
                 }
             )
 

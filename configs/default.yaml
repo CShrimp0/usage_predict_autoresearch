@@ -43,6 +43,7 @@ data:
 
 image:
   preprocessing:
+    use_original_size: false
     resize:
       - 256
       - 256

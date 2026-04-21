@@ -32,6 +32,7 @@ def save_core_outputs(
     feature_importance: pd.DataFrame,
     selected_features: list[str],
     split_info: dict,
+    raw_feature_columns: list[str] | None = None,
     age_bin_metrics: pd.DataFrame | None = None,
     subgroup_metrics: pd.DataFrame | None = None,
 ) -> None:
@@ -42,6 +43,19 @@ def save_core_outputs(
     save_readable_predictions(predictions, layout["root"] / "predictions_readable.csv")
     feature_importance.to_csv(layout["tables"] / "feature_importance.csv", index=False)
     pd.DataFrame({"feature": selected_features}).to_csv(layout["tables"] / "selected_features.csv", index=False)
+    if raw_feature_columns is not None:
+        feature_rows = []
+        for column in raw_feature_columns:
+            parts = column.split("__")
+            feature_rows.append(
+                {
+                    "feature": column,
+                    "scope": parts[0] if len(parts) > 0 else "",
+                    "group": parts[1] if len(parts) > 1 else "",
+                    "name": "__".join(parts[2:]) if len(parts) > 2 else "",
+                }
+            )
+        pd.DataFrame(feature_rows).to_csv(layout["tables"] / "extracted_feature_names.csv", index=False)
     save_json(split_info, layout["tables"] / "split_info.json")
     if age_bin_metrics is not None:
         age_bin_metrics.to_csv(layout["tables"] / "age_bin_metrics.csv", index=False)
@@ -56,6 +70,7 @@ def save_core_outputs(
                 "figures_dir": "figures/",
                 "models_dir": "models/",
                 "shap_dir": "shap/ (if enabled)",
+                "extracted_feature_names": "tables/extracted_feature_names.csv",
             }
         },
         layout["root"] / "results_overview.json",
@@ -350,6 +365,7 @@ def build_run_summary(
             "- `predictions_readable.csv`：按误差排序的样本级预测结果，适合人工阅读。",
             "- `tables/metrics.json`：完整指标明细。",
             "- `tables/features_raw.csv`：全部提取到的显式特征。",
+            "- `tables/extracted_feature_names.csv`：全部提取到的显式特征名，不含具体特征值。",
             "- `tables/selected_features.csv`：最终进入模型的特征名。",
             "- `tables/feature_importance.csv`：普通 importance 结果。",
             "- `shap/`：SHAP 专用结果目录，仅在成功生成 SHAP 时存在。",

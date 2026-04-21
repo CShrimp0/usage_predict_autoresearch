@@ -14,6 +14,7 @@ from preprocessing.column_builder import ColumnSpec
 from preprocessing.transformers import CorrelationFilter, DenseTransformer, NamedPCA, NamedVarianceThreshold
 from selection.embedded_methods import build_embedded_selector
 from selection.filter_methods import build_filter_selector
+from selection.wrapper_methods import build_wrapper_selector
 
 
 def _build_numeric_pipeline(config: dict[str, Any]) -> Pipeline:
@@ -59,6 +60,8 @@ def build_selector(config: dict[str, Any], random_state: int):
         return build_filter_selector(selection_config)
     if method in {"lasso", "elasticnet", "tree"}:
         return build_embedded_selector(selection_config, random_state=random_state)
+    if method in {"rfe_linear_svr"}:
+        return build_wrapper_selector(selection_config, random_state=random_state)
     raise ValueError(f"Unknown feature selection method: {method}")
 
 

@@ -30,6 +30,7 @@ from selection.stability import aggregate_importances, summarize_selected_featur
 from utils.feature_extraction import extract_feature_table
 from utils.modeling import build_pipeline_and_search, extract_best_params, unwrap_best_estimator
 from utils.parallel import threading_backend_context
+from utils.run_log import append_run_log
 from utils.seeds import set_random_seed
 
 
@@ -165,6 +166,7 @@ def main() -> None:
         feature_importance=feature_importance,
         selected_features=stability_df["feature"].tolist(),
         split_info=split_info,
+        raw_feature_columns=raw_feature_columns,
         age_bin_metrics=age_bin_metrics,
         subgroup_metrics=subgroup_metrics,
     )
@@ -216,6 +218,18 @@ def main() -> None:
         shap_top=shap_top,
     )
     save_run_summary(summary, run_dir / "run_summary.md")
+    append_run_log(
+        run_dir=run_dir,
+        config=config,
+        mode="nested_cv",
+        primary_metrics=pooled_metrics,
+        raw_feature_count=len(raw_feature_columns),
+        selected_feature_count=len(stability_df["feature"].tolist()),
+        fold_summary={
+            "mean": metrics["fold_metrics_mean"],
+            "std": metrics["fold_metrics_std"],
+        },
+    )
     logger.info("Nested CV finished. Outputs written to %s", run_dir)
 
 
